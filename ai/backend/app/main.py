@@ -1,9 +1,11 @@
-from typing import Literal
+from contextlib import asynccontextmanager
+from typing import AsyncIterator, Literal
 
 from fastapi import FastAPI
 from pydantic import BaseModel
 
 from app.config import Settings
+from app.db import initialize
 
 
 class ModelStatus(BaseModel):
@@ -19,7 +21,14 @@ class HealthResponse(BaseModel):
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings if settings is not None else Settings.from_env()
-    application = FastAPI(title="研迹 PaperTrail", version="0.1.0")
+
+    @asynccontextmanager
+    async def lifespan(application: FastAPI) -> AsyncIterator[None]:
+        initialize(settings.db_path)
+        yield
+
+    application = FastAPI(title="研迹 PaperTrail", version="0.1.0", lifespan=lifespan)
+    application.state.settings = settings
 
     @application.get("/api/health", response_model=HealthResponse)
     def health() -> HealthResponse:

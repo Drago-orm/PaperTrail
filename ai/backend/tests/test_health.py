@@ -7,9 +7,9 @@ from app.config import Settings
 from app.main import create_app
 
 
-def test_application_import_and_health_without_model_configuration():
+def test_application_import_and_health_without_model_configuration(tmp_path):
     assert importlib.import_module("app.main").app is not None
-    with TestClient(create_app(Settings())) as client:
+    with TestClient(create_app(Settings(data_dir=tmp_path))) as client:
         response = client.get("/api/health")
     assert response.status_code == 200
     assert response.json() == {
@@ -26,9 +26,9 @@ def test_application_import_and_health_without_model_configuration():
     }
 
 
-def test_configured_model_status_does_not_leak_credentials():
+def test_configured_model_status_does_not_leak_credentials(tmp_path):
     secret = "test-only-secret"
-    settings = Settings("https://model.example/v1", "test-model", secret)
+    settings = Settings("https://model.example/v1", "test-model", secret, data_dir=tmp_path)
     with TestClient(create_app(settings)) as client:
         response = client.get("/api/health")
     assert response.status_code == 200
@@ -53,8 +53,8 @@ def test_configured_model_status_does_not_leak_credentials():
         "https://user:secret@host",
     ],
 )
-def test_invalid_model_url_is_reported_without_preventing_startup(base_url):
-    settings = Settings(base_url, "test-model", "test-only-secret")
+def test_invalid_model_url_is_reported_without_preventing_startup(base_url, tmp_path):
+    settings = Settings(base_url, "test-model", "test-only-secret", data_dir=tmp_path)
     with TestClient(create_app(settings)) as client:
         response = client.get("/api/health")
     assert response.status_code == 200
@@ -75,3 +75,11 @@ def test_environment_overrides_dotenv_and_blank_values_are_missing(monkeypatch):
     assert settings.model_base_url == "https://model.example/v1"
     assert settings.model_api_key == "test-key"
     assert settings.model_status() == (["PAPERTRAIL_MODEL_NAME"], [])
+
+
+def test_database_initialization_failure_prevents_health_startup(tmp_path):
+    data_file = tmp_path / "not-a-directory"
+    data_file.write_text("test fixture", encoding="utf-8")
+    with pytest.raises(FileExistsError):
+        with TestClient(create_app(Settings(data_dir=data_file))):
+            pytest.fail("数据库初始化失败时应用不应启动")

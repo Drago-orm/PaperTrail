@@ -14,6 +14,11 @@ class Settings:
     model_base_url: str = ""
     model_name: str = ""
     model_api_key: str = field(default="", repr=False)
+    data_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "data")
+
+    @property
+    def db_path(self) -> Path:
+        return self.data_dir / "papertrail.sqlite3"
 
     @classmethod
     def from_env(cls) -> "Settings":

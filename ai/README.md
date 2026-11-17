@@ -1,6 +1,6 @@
 # 研迹 PaperTrail
 
-面向计算机／AI 实验型论文的本地研读工具。当前步骤 01 仅实现空文献库、API 健康检查和模型配置状态；PDF 导入、分析及导出尚未实现。
+面向计算机／AI 实验型论文的本地研读工具。当前实现步骤 01—02：空文献库、API 健康检查和模型配置状态，以及 SQLite 数据模型、顺序迁移和文档文件存储。PDF 导入、分析及导出尚未实现。
 
 项目根目录是本文件所在的 `ai/`；Git 仓库位于父目录。所有命令在项目根目录用 PowerShell 7 执行。
 
@@ -45,3 +45,13 @@ python -m pip install --target .tools uv==0.13.8
 无需模型配置也可启动。可将 `.env.example` 复制为 `.env`，填写 `PAPERTRAIL_MODEL_BASE_URL`、`PAPERTRAIL_MODEL_NAME` 和 `PAPERTRAIL_MODEL_API_KEY` 后重启。已有环境变量优先。留空和非法 URL 会明确显示；健康接口不返回密钥。此阶段检查配置齐全与格式，尚未验证真实模型连接，也没有实时分析或样例回放。
 
 后续范围见 [plan.md](plan.md)，实际检查和开发证据见 [docs/progress.md](docs/progress.md)。
+
+## 数据与文件
+
+启动时初始化 `data/papertrail.sqlite3`，用 `PRAGMA user_version` 依序执行事务迁移；版本不支持或初始化失败会阻止启动。每个连接启用外键，写入使用参数绑定和事务。数据库及文件都被 Git 忽略；测试注入临时数据目录，不修改已有文献数据。
+
+模型覆盖文献、文档版本、证据块、笔记快照、Idea 及来源、运行与阶段、合并事件。笔记用 Pydantic 校验的 JSON 保存条目与核查状态，人工修订插入新快照并保留父版本；证据和笔记来源绑定具体文件版本。这里仅做结构、证据存在性与文件归属检查，语义核查将在后续步骤实现。坐标约定为物理页从 1 开始、左上角原点、PDF 点坐标，边界受页面宽高约束；尚未实现 PDF 解析或阅读器投影。
+
+确定性服务接口位于 `backend/app/db.py`（`create_paper`、`create_note`）和 `backend/app/services/storage.py`（`store_document`、`document_path`）。文件由服务器 UUID 保存为 `data/documents/<UUID>.pdf`，原文件名仅为元数据；按文档 ID 查数据库后读取，并检查实际路径未越出数据目录。记录真实 SHA-256 和递增版本，失败时回滚并清理本次写入。
+
+本步存储接口只保存字节，解析状态保持 `pending`，页数和解析版本为未知；没有上传、PDF 格式/大小验证或重复复用流程，这些属于步骤 03。不要将待解析文件视为已验证 PDF。
