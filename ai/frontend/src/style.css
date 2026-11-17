@@ -398,3 +398,9 @@ main {
     font-size: 8px;
   }
 }
+.duplicate-review { border-block: 1px solid #ccd8d1; margin: 20px 0; padding: 16px 0; overflow-wrap: anywhere; }
+.comparison-scroll { overflow-x: auto; margin: 12px 0; }
+.comparison-scroll table { width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 520px; }
+.comparison-scroll th, .comparison-scroll td { border: 1px solid #ccd8d1; padding: 8px; text-align: left; vertical-align: top; white-space: pre-wrap; }
+.comparison-scroll th:first-child { width: 12%; }
+.comparison-scroll th:last-child { width: 16%; }

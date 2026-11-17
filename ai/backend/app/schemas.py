@@ -23,6 +23,8 @@ class Paper(Schema):
     tasks: list[str] = Field(default_factory=list)
     methods: list[str] = Field(default_factory=list)
     datasets: list[str] = Field(default_factory=list)
+    doi: str = Field(default='', max_length=300)
+    year: int | None = Field(default=None, strict=True, ge=1000, le=9999)
     reading_status: Literal["unread", "reading", "read"] = "unread"
     created_at: AwareDatetime = Field(default_factory=utc_now)
 

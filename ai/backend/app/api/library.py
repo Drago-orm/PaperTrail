@@ -1,5 +1,3 @@
-import json
-from contextlib import closing
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException
@@ -11,21 +9,12 @@ from app.config import Settings
 from app.schemas import Document, Paper
 from app.services.storage import document_path
 
-ARRAYS = ('authors', 'keywords', 'tags', 'tasks', 'methods', 'datasets')
-EDITABLE = ('title', 'abstract', *ARRAYS, 'reading_status')
+EDITABLE = db.PAPER_EDITABLE
 
 
 class LibraryPaper(Paper):
     removed: bool
     documents: list[Document]
-
-
-def paper_values(row):
-    values = dict(row)
-    values.pop('removed')
-    for name in ARRAYS:
-        values[name] = json.loads(values[name])
-    return values
 
 
 def library_router(settings: Settings) -> APIRouter:
@@ -34,7 +23,7 @@ def library_router(settings: Settings) -> APIRouter:
     @router.get('/api/papers', response_model=list[LibraryPaper])
     def list_papers(q: str = '', title: str = '', author: str = '', abstract: str = '',
                     keyword: str = '', tag: str = '', reading_status: str = '', removed: bool = False):
-        clauses = ['removed=?']
+        clauses = ['removed=?', "NOT EXISTS (SELECT 1 FROM merge_events m WHERE m.secondary_paper_id=papers.id AND m.status='applied')"]
         parameters: list[str | int] = [int(removed)]
         for column, value in [('title', title), ('authors', author), ('abstract', abstract),
                               ('keywords', keyword), ('tags', tag), ('reading_status', reading_status)]:
@@ -44,11 +33,12 @@ def library_router(settings: Settings) -> APIRouter:
         if q:
             clauses.append("instr(lower(title||authors||abstract||keywords||tags),lower(?))>0")
             parameters.append(q)
-        with closing(db.connect(settings.db_path)) as conn:
+        with db.transaction(settings.db_path) as conn:
             rows = conn.execute('SELECT * FROM papers WHERE '+' AND '.join(clauses)+' ORDER BY created_at DESC,id', parameters).fetchall()
-            return [LibraryPaper(**paper_values(row), removed=bool(row['removed']), documents=[
+            return [LibraryPaper(**db.paper_values(row), removed=bool(row['removed']), documents=[
                 Document.model_validate(dict(doc)) for doc in conn.execute(
-                    'SELECT * FROM documents WHERE paper_id=? ORDER BY version DESC', (row['id'],))]) for row in rows]
+                    '''SELECT d.* FROM documents d JOIN paper_owners o ON o.original_id=d.paper_id
+                       WHERE o.library_id=? ORDER BY d.created_at DESC,d.id''', (row['id'],))]) for row in rows]
 
     @router.patch('/api/papers/{paper_id}', response_model=Paper)
     def edit_paper(paper_id: UUID, metadata: dict[str, JsonValue]):
@@ -58,18 +48,20 @@ def library_router(settings: Settings) -> APIRouter:
             row = conn.execute('SELECT * FROM papers WHERE id=?', (str(paper_id),)).fetchone()
             if row is None:
                 raise HTTPException(404, '文献不存在')
+            if conn.execute("SELECT 1 FROM merge_events WHERE secondary_paper_id=? AND status='applied'", (str(paper_id),)).fetchone():
+                raise HTTPException(409, '该条目已合并，请编辑主条目或先撤销合并')
             try:
-                paper = Paper.model_validate({**paper_values(row), **metadata})
+                paper = Paper.model_validate({**db.paper_values(row), **metadata})
             except ValidationError as exc:
                 raise HTTPException(422, '元数据类型或阅读状态无效') from exc
-            conn.execute('UPDATE papers SET '+','.join(f'{field}=?' for field in EDITABLE)+' WHERE id=?',
-                         [json.dumps(getattr(paper, field), ensure_ascii=False) if field in ARRAYS else getattr(paper, field)
-                          for field in EDITABLE]+[str(paper_id)])
+            db.update_metadata(conn, str(paper_id), paper.model_dump(include=set(EDITABLE)))
         return paper
 
     @router.put('/api/papers/{paper_id}/visibility')
     def visibility(paper_id: UUID, removed: bool):
         with db.transaction(settings.db_path) as conn:
+            if conn.execute("SELECT 1 FROM merge_events WHERE secondary_paper_id=? AND status='applied'", (str(paper_id),)).fetchone():
+                raise HTTPException(409, '该条目已合并，请操作主条目或先撤销合并')
             if conn.execute('UPDATE papers SET removed=? WHERE id=?', (int(removed), str(paper_id))).rowcount != 1:
                 raise HTTPException(404, '文献不存在')
         return {'removed': removed}

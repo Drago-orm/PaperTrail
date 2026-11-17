@@ -1,12 +1,13 @@
-export type Document = { id: string; version: number; original_name: string; parse_status: string }
+export type Document = { id: string; paper_id: string; version: number; original_name: string; parse_status: string; sha256: string }
 export type Paper = {
   id: string; title: string; authors: string[]; abstract: string; keywords: string[]; tags: string[];
   reading_status: string; removed: boolean; documents: Document[]
+  doi: string; year: number | null
 }
 export type Evidence = {
   id: string; physical_page: number; text: string; bbox: number[]; page_width: number; page_height: number
 }
-export type Result = { document: Document; evidence: Evidence[]; report: {
+export type Result = { document: Document; reused: boolean; evidence: Evidence[]; report: {
   status: string; warnings: string[]; error: string | null; metadata_candidates: Record<string, string | null>
 } }
 export function record(value: unknown): value is Record<string, unknown> {
@@ -15,12 +16,14 @@ export function record(value: unknown): value is Record<string, unknown> {
 const strings = (value: unknown): value is string[] => Array.isArray(value) && value.every(v => typeof v === 'string')
 function document(value: unknown): value is Document {
   return record(value) && typeof value.id === 'string' && typeof value.version === 'number'
+    && typeof value.paper_id === 'string' && typeof value.sha256 === 'string'
     && typeof value.original_name === 'string' && typeof value.parse_status === 'string'
 }
 function paper(value: unknown): value is Paper {
   return record(value) && typeof value.id === 'string' && typeof value.title === 'string'
     && typeof value.abstract === 'string' && strings(value.authors) && strings(value.keywords) && strings(value.tags)
     && typeof value.reading_status === 'string' && typeof value.removed === 'boolean'
+    && typeof value.doi === 'string' && (value.year === null || typeof value.year === 'number' && Number.isInteger(value.year))
     && Array.isArray(value.documents) && value.documents.every(document)
 }
 function evidence(value: unknown): value is Evidence {
@@ -49,7 +52,7 @@ export async function papers(query: string): Promise<Paper[]> {
   return data
 }
 export function result(data: unknown): Result {
-  if (!record(data) || !document(data.document) || !Array.isArray(data.evidence) || !data.evidence.every(evidence)
+  if (!record(data) || !document(data.document) || typeof data.reused !== 'boolean' || !Array.isArray(data.evidence) || !data.evidence.every(evidence)
     || !record(data.report) || typeof data.report.status !== 'string' || !strings(data.report.warnings)
     || !(data.report.error === null || typeof data.report.error === 'string') || !record(data.report.metadata_candidates)
     || !Object.values(data.report.metadata_candidates).every(v => v === null || typeof v === 'string')) {
@@ -59,7 +62,7 @@ export function result(data: unknown): Result {
   for (const [key, value] of Object.entries(data.report.metadata_candidates)) {
     if (value === null || typeof value === 'string') candidates[key] = value
   }
-  return { document: data.document, evidence: data.evidence, report: {
+  return { document: data.document, reused: data.reused, evidence: data.evidence, report: {
     status: data.report.status, warnings: data.report.warnings, error: data.report.error, metadata_candidates: candidates,
   } }
 }

@@ -186,5 +186,5 @@ def test_v1_upgrade_preserves_and_parses_existing_document(tmp_path):
         assert result['document']['id'] == str(original.id)
         assert result['reused'] and result['report']['status'] == 'parsed'
     with db.transaction(settings.db_path) as conn:
-        assert conn.execute('PRAGMA user_version').fetchone()[0] == 6
+        assert conn.execute('PRAGMA user_version').fetchone()[0] == 7
         assert conn.execute('SELECT title FROM papers WHERE id=?', (str(paper.id),)).fetchone()[0] == paper.title

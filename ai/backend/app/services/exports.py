@@ -207,12 +207,15 @@ def capture(settings: Settings, note_id: UUID | None, idea_ids: list[UUID]) -> S
                 continue
             paper = conn.execute('SELECT * FROM papers WHERE id=?', (row['paper_id'],)).fetchone()
             for name, title in [('title', '论文标题'), ('authors', '作者'), ('abstract', '摘要'), ('keywords', '关键词'),
-                                ('tags', '标签'), ('tasks', '任务'), ('methods', '方法'), ('datasets', '数据集'), ('reading_status', '阅读状态')]:
+                                ('tags', '标签'), ('tasks', '任务'), ('methods', '方法'), ('datasets', '数据集'), ('doi', 'DOI'), ('year', '出版年份'), ('reading_status', '阅读状态')]:
                 value = paper[name]
                 report.value(title, json.loads(value) if name in {'authors', 'keywords', 'tags', 'tasks', 'methods', 'datasets'} else value)
             report.value('文献ID', row['paper_id'])
             report.value('文献入库时间', paper['created_at'])
             report.value('文献已软移除', '是（来源保留）' if paper['removed'] else '否')
+            owner = conn.execute('SELECT library_id FROM paper_owners WHERE original_id=?', (row['paper_id'],)).fetchone()[0]
+            if owner != row['paper_id']:
+                report.value('当前汇总主条目ID（原归属保留）', owner)
             for name, title in [('original_name', '原文件名'), ('id', '文件ID'), ('version', '文件版本'),
                                 ('sha256', '文件SHA256'), ('created_at', '文件入库时间'), ('page_count', '物理总页数'), ('parse_status', '解析状态'), ('parse_version', '解析版本')]:
                 report.value(title, row[name])

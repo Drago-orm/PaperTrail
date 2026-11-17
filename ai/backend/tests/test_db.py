@@ -56,7 +56,7 @@ def test_initialization_is_idempotent_and_data_survives_reopen(db_path):
     db.initialize(db_path)
     connection = db.connect(db_path)
     try:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 6
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 7
         assert connection.execute("PRAGMA foreign_keys").fetchone()[0] == 1
         row = connection.execute("SELECT * FROM papers WHERE id=?", (str(paper.id),)).fetchone()
         assert row["title"] == paper.title
@@ -64,7 +64,7 @@ def test_initialization_is_idempotent_and_data_survives_reopen(db_path):
         tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         assert tables == {
             "papers", "documents", "evidence_blocks", "notes", "ideas", "idea_sources",
-            "runs", "run_steps", "merge_events", "parse_reports",
+            "runs", "run_steps", "merge_events", "parse_reports", "paper_relations",
         }
     finally:
         connection.close()

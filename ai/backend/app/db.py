@@ -124,7 +124,37 @@ MIGRATIONS = (SCHEMA_V1, (
     "ALTER TABLE ideas ADD COLUMN experiment_json TEXT CHECK(experiment_json IS NULL OR json_valid(experiment_json))",
     "CREATE UNIQUE INDEX idea_root_version ON ideas(root_id,version)",
     "ALTER TABLE idea_sources ADD COLUMN item_id TEXT",
+), (
+    "ALTER TABLE papers ADD COLUMN doi TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE papers ADD COLUMN year INTEGER CHECK(year IS NULL OR year BETWEEN 1000 AND 9999)",
+    "CREATE UNIQUE INDEX active_merge_secondary ON merge_events(secondary_paper_id) WHERE status='applied'",
+    """CREATE TABLE paper_relations (
+        left_id TEXT NOT NULL REFERENCES papers(id), right_id TEXT NOT NULL REFERENCES papers(id),
+        kind TEXT NOT NULL CHECK(kind IN ('version','related','distinct')),
+        created_at TEXT NOT NULL, PRIMARY KEY(left_id,right_id), CHECK(left_id<right_id)
+    )""",
+    """CREATE VIEW paper_owners AS SELECT p.id AS original_id,
+        COALESCE(m.primary_paper_id,p.id) AS library_id FROM papers p LEFT JOIN merge_events m
+        ON m.secondary_paper_id=p.id AND m.status='applied'""",
 ))
+
+PAPER_ARRAYS = ('authors', 'keywords', 'tags', 'tasks', 'methods', 'datasets')
+PAPER_EDITABLE = ('title', 'abstract', *PAPER_ARRAYS, 'reading_status', 'doi', 'year')
+
+
+def paper_values(row):
+    values = dict(row)
+    values.pop('removed', None)
+    for name in PAPER_ARRAYS:
+        values[name] = json.loads(values[name])
+    return values
+
+
+def update_metadata(connection, paper_id: str, values: dict):
+    if not values or set(values) - set(PAPER_EDITABLE):
+        raise ValueError('元数据字段无效')
+    connection.execute('UPDATE papers SET '+','.join(f'{key}=?' for key in values)+' WHERE id=?',
+                       [json.dumps(value, ensure_ascii=False) if key in PAPER_ARRAYS else value for key, value in values.items()]+[paper_id])
 
 
 def connect(path: Path) -> sqlite3.Connection:
@@ -179,6 +209,9 @@ def create_paper(db_path: Path, paper: Paper) -> Paper:
                 paper.reading_status, paper.created_at.isoformat(),
             ),
         )
+        # Empty DOI/year use the column defaults; missing publication metadata stays missing.
+        if paper.doi or paper.year is not None:
+            update_metadata(connection, str(paper.id), {'doi': paper.doi, 'year': paper.year})
     return paper
 
 

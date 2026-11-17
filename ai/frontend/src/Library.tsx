@@ -1,12 +1,15 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import Reader from './Reader'
 import Notes from './Notes'
+import Duplicates from './Duplicates'
 import { errorMessage, papers, request, result, type Evidence, type Paper, type Result } from './libraryApi'
 
 const emptyFilters = { q: '', title: '', author: '', abstract: '', keyword: '', tag: '', reading_status: '' }
 const labels = { q: '关键词', title: '题目', author: '作者', abstract: '摘要', keyword: '论文关键词', tag: '标签' }
 const statuses: Record<string, string> = { unread: '未读', reading: '阅读中', read: '已读' }
-type Draft = { title: string; authors: string; abstract: string; keywords: string; tags: string; reading_status: string }
+type Draft = { title: string; authors: string; abstract: string; keywords: string; tags: string; reading_status: string; doi: string; year: string }
+const toDraft = (paper:Paper):Draft=>({title:paper.title,authors:paper.authors.join('\n'),abstract:paper.abstract,
+  keywords:paper.keywords.join('\n'),tags:paper.tags.join('\n'),reading_status:paper.reading_status,doi:paper.doi,year:paper.year===null?'':String(paper.year)})
 
 export default function Library() {
   const [filters, setFilters] = useState(emptyFilters)
@@ -46,8 +49,7 @@ export default function Library() {
   function choose(paper: Paper) {
     setSelected(paper)
     setEvidence(null)
-    setDraft({ title: paper.title, authors: paper.authors.join('\n'), abstract: paper.abstract,
-      keywords: paper.keywords.join('\n'), tags: paper.tags.join('\n'), reading_status: paper.reading_status })
+    setDraft(toDraft(paper))
     setDocumentId(paper.documents[0]?.id ?? '')
     setNotice('')
   }
@@ -63,7 +65,7 @@ export default function Library() {
       if (owner) { choose(owner); setDocumentId(data.document.id) }
       else setSelected(null)
       setRefresh(v => v + 1)
-      setNotice(owner ? '文件已入库，请核对解析覆盖及元数据候选。' : '同文件已在移除区，请在移除区选择恢复。')
+      setNotice(owner ? data.reused ? '检测到相同SHA256，已复用原文件版本；没有创建重复附件。' : '文件已入库，请核对解析覆盖及元数据候选。' : '同文件已在移除区，请在移除区选择恢复。')
     } catch (e) { setError(errorMessage(e)) }
     finally { setBusy(false) }
   }
@@ -74,11 +76,24 @@ export default function Library() {
     setBusy(true); setError(''); setNotice('')
     try {
       const lines = (value: string) => value.split('\n').map(v => v.trim()).filter(Boolean)
+      if(draft.year.trim()&&!/^[1-9]\d{3}$/.test(draft.year.trim()))throw Error('年份须为四位整数；未知请留空')
       await request('/api/papers/' + selected.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...draft, authors: lines(draft.authors), keywords: lines(draft.keywords), tags: lines(draft.tags) }) })
-      setRefresh(v => v + 1); setNotice('元数据已保存。')
+        body: JSON.stringify({ ...draft, year:draft.year.trim()?Number(draft.year):null, authors: lines(draft.authors), keywords: lines(draft.keywords), tags: lines(draft.tags) }) })
+      await refreshSelection(); setNotice('元数据已保存。')
     } catch (e) { setError(errorMessage(e)) }
     finally { setBusy(false) }
+  }
+
+  async function refreshSelection() {
+    const all = await papers('removed='+String(removed))
+    const owner = all.find(p=>p.documents.some(d=>d.id===documentId))
+    // Undo can restore the currently open attachment to a different visibility group.
+    const other = documentId&&!owner ? await papers('removed='+String(!removed)) : []
+    const fresh = owner ?? other.find(p=>p.documents.some(d=>d.id===documentId)) ?? all.find(p=>p.id===selected?.id)
+    setItems(fresh&&fresh.removed!==removed?other:all);setRefresh(v=>v+1)
+    if(fresh&&fresh.removed!==removed)setRemoved(fresh.removed)
+    if(fresh){setSelected(fresh);setDraft(toDraft(fresh));if(!documentId)setDocumentId(fresh.documents[0]?.id??'')}
+    else{setSelected(null);setDraft(null);setDocumentId('')}
   }
 
   async function changeVisibility(paper: Paper) {
@@ -124,12 +139,16 @@ export default function Library() {
             {{ title: '题目', authors: '作者（每行一个）', abstract: '摘要', keywords: '关键词（每行一个）', tags: '标签（每行一个）' }[key]}
             <textarea aria-label={'编辑'+key} value={draft[key]} onChange={e => setDraft({ ...draft, [key]: e.target.value })} />
           </label>)}
+          <label>DOI（未知留空）<input aria-label="编辑doi" value={draft.doi} maxLength={300} onChange={e=>setDraft({...draft,doi:e.target.value})}/></label>
+          <label>出版年份（未知留空）<input aria-label="编辑year" inputMode="numeric" value={draft.year} maxLength={4} onChange={e=>setDraft({...draft,year:e.target.value})}/></label>
+          <p>DOI和年份由用户核对；候选匹配只检查DOI形态，不联网验证注册信息。</p>
           <label>阅读状态<select value={draft.reading_status} onChange={e => setDraft({ ...draft, reading_status: e.target.value })}>
             {Object.entries(statuses).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           <button disabled={busy} type="submit">保存元数据</button>
         </form>
+        <Duplicates key={selected.id} paperId={selected.id} refresh={refresh} disabled={busy||JSON.stringify(draft)!==JSON.stringify(toDraft(selected))} onChanged={refreshSelection}/>
         <label>文件版本<select aria-label="文件版本" value={documentId} onChange={e => { setEvidence(null); setDocumentId(e.target.value) }}>
-          {selected.documents.map(doc => <option key={doc.id} value={doc.id}>v{doc.version} · {doc.original_name} · {doc.parse_status}</option>)}</select></label>
+          {selected.documents.map(doc => <option key={doc.id} value={doc.id}>原文件v{doc.version} · {doc.original_name} · {doc.paper_id===selected.id?'当前条目':'合并来源 '+doc.paper_id.slice(0,8)} · {doc.parse_status}</option>)}</select></label>
         {!documentId && <p>此文献没有原文件。</p>}
         {documentId && <>
           {reportError ? <p role="alert">{reportError}</p> : !report ? <p>正在加载解析报告…</p> : <>

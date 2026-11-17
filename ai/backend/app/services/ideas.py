@@ -40,7 +40,8 @@ def fact(conn, choice: SourceChoice) -> dict:
     original = next((value for value in snapshot.items + snapshot.writing_items if value.id == item.id), None) if snapshot else None
     if original is None or original.model_dump() != item.model_dump():
         raise ValueError('来源条目与已核查快照不一致，请先重新核查')
-    doc = conn.execute('''SELECT d.*,p.title,p.removed FROM documents d JOIN papers p ON p.id=d.paper_id WHERE d.id=?''', (str(note.document_id),)).fetchone()
+    doc = conn.execute('''SELECT d.*,p.title,visible.removed FROM documents d JOIN papers p ON p.id=d.paper_id
+        JOIN paper_owners o ON o.original_id=p.id JOIN papers visible ON visible.id=o.library_id WHERE d.id=?''', (str(note.document_id),)).fetchone()
     if doc is None:
         raise ValueError('来源文件版本缺失')
     if doc['parse_version'] != run['parse_version']:
@@ -57,7 +58,7 @@ def fact(conn, choice: SourceChoice) -> dict:
 def available(settings: Settings) -> list[dict]:
     result = []
     with closing(db.connect(settings.db_path)) as conn:
-        rows = conn.execute('''SELECT n.* FROM notes n JOIN papers p ON p.id=n.paper_id
+        rows = conn.execute('''SELECT n.* FROM notes n JOIN paper_owners o ON o.original_id=n.paper_id JOIN papers p ON p.id=o.library_id
             WHERE p.removed=0 AND n.version=(SELECT MAX(v.version) FROM notes v WHERE v.document_id=n.document_id)''').fetchall()
         for row in rows:
             note = note_from_row(row)
@@ -157,8 +158,9 @@ def save(settings: Settings, draft: IdeaDraft, base_id: UUID | None, status: str
 def view(conn, row) -> dict:
     result = from_row(row).model_dump(mode='json')
     sources = []
-    for source in conn.execute('''SELECT s.*,p.title,p.removed,d.version AS file_version,d.sha256,e.physical_page
+    for source in conn.execute('''SELECT s.*,p.title,visible.removed,d.version AS file_version,d.sha256,e.physical_page
         FROM idea_sources s JOIN papers p ON p.id=s.paper_id JOIN documents d ON d.id=s.document_id
+        JOIN paper_owners o ON o.original_id=p.id JOIN papers visible ON visible.id=o.library_id
         LEFT JOIN evidence_blocks e ON e.id=s.evidence_id WHERE s.idea_id=?''', (row['id'],)):
         value = dict(source)
         value['paper_title'] = value.pop('title')
