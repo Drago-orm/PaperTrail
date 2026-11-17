@@ -1,12 +1,13 @@
 # 当前状态
 
-- 已完成功能步骤：00—03；下一步：04，等待用户指定。
-- 当前已有：健康状态、SQLite 数据与文件存储、PDF 上传/文字证据解析；尚无文献管理 UI、阅读器或真实 AI 调用。
-- 入口：backend/app/main.py、services/pdf_import.py、services/storage.py、db.py、schemas.py。
-- 上传：POST /api/documents（multipart file，可选 paper_id）；读取：GET /api/documents/{UUID}。真实上限20 MiB/200页，同哈希复用原文档。
-- 数据库迁移至v2（parse_reports）；候选、覆盖页、警告和失败原因持久化。数据库 parsed 可带限制，完整覆盖看 report；无文字/旋转/疑似双栏跳过或失败，未执行OCR。
-- 最近检查：全量类型/生产构建及72项后端测试通过；新增升级回归后PDF专项14项通过。真实HTTP冒烟和自制样例渲染核验通过。保留原有上游httpx警告。
-- 依赖：pdfplumber0.11.10、python-multipart0.0.34；其余沿用既有版本和真实锁文件。
-- 当前步骤提交/推送状态以最终Git执行及远端核验为准，不为记录自身哈希另建提交。
-- 既有根plan.md删除及work材料保留，不纳入本步；保留并行文档整理提交729a10e。
-- 开发证据：docs/development/step-03.md；完整历史：docs/progress.md。
+- 已完成功能步骤：00—04；下一步05，等待用户指定，不自行开始。
+- 已有：文献上传/编辑/组合筛选、移除恢复、文件版本、PDF.js原文阅读和证据高亮；尚无AI分析和导出。
+- 数据库v3：papers.removed；证据/文件不随移除删除。现有PDF解析范围和失败报告继续生效。
+- 入口：frontend/src/Library.tsx、Reader.tsx、coordinates.ts、libraryApi.ts；backend/app/api/library.py、services/pdf_import.py。
+- 新接口：GET/PATCH papers、PUT papers/{id}/visibility、GET documents/{id}/file。读取原文件必须按文档ID。
+- 坐标：后端左上角PDF点，先经原始viewport反转至PDF，再用当前viewport投影。支持缩放、旋转和不同页面尺寸，设备像素比只应用于canvas。
+- 最近检查：全量类型/生产构建与后端75项通过；冻结npm ci通过；真实PDF.js的32组坐标回归通过；真实浏览器上传/编辑/刷新/恢复和高亮通过。
+- 依赖：PDF.js6.5.438，真实npm锁；其他沿用已有依赖。不重复安装或复查未变化模块。
+- 已知警告：上游httpx弃用、PDF.js包体积；未禁用或过滤。
+- 数据和QA在忽略目录；原有根plan删除与work材料保留。开发证据docs/development/step-04.md。
+- 提交和推送以实际Git执行及远端核验为准，不为记录自身哈希另建提交。

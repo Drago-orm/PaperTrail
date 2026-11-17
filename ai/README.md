@@ -1,6 +1,6 @@
 # 研迹 PaperTrail
 
-面向计算机／AI 实验型论文的本地研读工具。当前实现步骤 01—03：健康状态、SQLite 数据与文件存储，以及后端 PDF 上传和文字证据提取。文献列表与上传界面、AI 分析和导出尚未实现。
+面向计算机／AI 实验型论文的本地研读工具。当前实现步骤 01—04：上传、元数据编辑、组合文本筛选、可恢复移除，以及 PDF.js 原文阅读和证据定位。AI 分析和导出尚未实现。
 
 项目根目录是本文件所在的 `ai/`；Git 仓库位于父目录。所有命令在项目根目录用 PowerShell 7 执行。
 
@@ -50,7 +50,7 @@ python -m pip install --target .tools uv==0.13.8
 
 启动时初始化 `data/papertrail.sqlite3`，用 `PRAGMA user_version` 依序执行事务迁移；版本不支持或初始化失败会阻止启动。每个连接启用外键，写入使用参数绑定和事务。数据库及文件都被 Git 忽略；测试注入临时数据目录，不修改已有文献数据。
 
-模型覆盖文献、文档版本、证据块、笔记快照、Idea 及来源、运行与阶段、合并事件。笔记用 Pydantic 校验的 JSON 保存条目与核查状态，人工修订插入新快照并保留父版本；证据和笔记来源绑定具体文件版本。这里仅做结构、证据存在性与文件归属检查，语义核查将在后续步骤实现。坐标约定为物理页从 1 开始、左上角原点、PDF 点坐标，边界受页面宽高约束；尚未实现阅读器投影。
+模型覆盖文献、文档版本、证据块、笔记快照、Idea 及来源、运行与阶段、合并事件。笔记用 Pydantic 校验的 JSON 保存条目与核查状态，人工修订插入新快照并保留父版本；证据和笔记来源绑定具体文件版本。这里仅做结构、证据存在性与文件归属检查，语义核查将在后续步骤实现。坐标约定为物理页从 1 开始、左上角原点、PDF 点坐标，边界受页面宽高约束；阅读器按下述 viewport 约定投影。
 
 确定性服务接口位于 `backend/app/db.py`（`create_paper`、`create_note`）和 `backend/app/services/storage.py`（`store_document`、`document_path`）。文件由服务器 UUID 保存为 `data/documents/<UUID>.pdf`，原文件名仅为元数据；按文档 ID 查数据库后读取，并检查实际路径未越出数据目录。记录真实 SHA-256 和递增版本，失败时回滚并清理本次写入。
 
@@ -65,3 +65,13 @@ python -m pip install --target .tools uv==0.13.8
 按视觉文字行生成段落候选，保存真实原文、章节候选、物理页和坐标。检测到双栏/复杂布局、旋转页时跳过并警告；空白、扫描、损坏及加密文件明确失败或受限，不执行 OCR。含图表页仅读取文字，报告 limited。即使 parsed 也仅表示文字提取完成，不保证通用版式阅读顺序或图表准确性；完整覆盖以 report 为准，数据库 parsed 可能带限制。论文中的指令文字只保存为原文。
 
 固定自制、CC0 样例生成器在 `backend/tests/test_pdf_import.py`，涵盖单栏、双栏、图像页、空文本、旋转和坐标。未使用第三方论文全文。
+
+## 文献库与阅读器
+
+网页上传后直接显示入库文献。题目、作者、摘要、关键词、标签、阅读状态可编辑保存；数组字段每行一项，标题/作者候选需用户采用并保存。关键词筛选是文本匹配，多个条件按 AND 组合，不是语义检索。
+
+单条移除将该文献放入移除区，可选择恢复；原文件、证据和来源仍保留。文件版本可切换，点击原文证据会跳转物理页并高亮。阅读器支持缩放、旋转、手动页码和原文件链接；坐标先按原页面 viewport 转为 PDF 坐标，再投影至当前 viewport，不把设备像素倍率重复乘进 CSS。
+
+接口：GET /api/papers（q/title/author/abstract/keyword/tag/reading_status/removed）；PATCH /api/papers/{UUID} 编辑元数据；PUT /api/papers/{UUID}/visibility?removed=true 或 false；GET /api/documents/{UUID}/file 按文档 ID 读取 PDF。数据库顺序迁移至 v3，新增 removed 标记。解析限制仍以步骤03报告为准。
+
+运行 frontend/ 中的 npm run test:reader，使用 fixtures/reader.pdf 的 CC0 双尺寸样例，验证真实 PDF.js 的缩放与旋转坐标。PDF.js 6.5.438 使用本地 worker，依赖及锁文件由 npm 实际生成。构建保留 PDF.js 带来的体积告警，不调高阈值隐藏。

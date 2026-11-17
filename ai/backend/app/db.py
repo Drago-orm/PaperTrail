@@ -107,6 +107,8 @@ MIGRATIONS = (SCHEMA_V1, (
         document_id TEXT NOT NULL PRIMARY KEY REFERENCES documents(id),
         report_json TEXT NOT NULL CHECK(json_valid(report_json))
     )""",
+), (
+    "ALTER TABLE papers ADD COLUMN removed INTEGER NOT NULL DEFAULT 0 CHECK(removed IN (0,1))",
 ))
 
 

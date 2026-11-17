@@ -6,6 +6,26 @@
   text-rendering: optimizeLegibility;
 }
 
+.library-body { padding: 20px; }
+.filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin: 12px 0; }
+.library-body label { display: block; font-size: 12px; }
+.library-body input:not([type=checkbox]), .library-body select, .library-body textarea { width: 100%; padding: 7px; border: 1px solid #ccd8d1; border-radius: 4px; font: inherit; }
+.library-body button { padding: 5px 9px; margin: 4px; color: #20604e; background: #f5f8f6; border: 1px solid #ccd8d1; border-radius: 4px; }
+.paper-list, .evidence-list { list-style: none; padding: 0; }
+.paper-list li { border-bottom: 1px solid #e0e7e2; padding: 8px 0; }
+.paper-list span { display: block; font-size: 12px; color: #69796f; }
+.paper-detail { border-top: 1px solid #ccd8d1; margin-top: 16px; padding-top: 16px; }
+.paper-detail form { display: grid; gap: 10px; margin: 12px 0; }
+.upload-button { color: #20604e; font-size: 13px; cursor: pointer; }
+.upload-button input { max-width: 180px; }
+.reader-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.reader-controls label { width: 100px; }
+.pdf-scroll { max-height: 75vh; overflow: auto; background: #e5ebe7; }
+.pdf-stage { position: relative; background: white; }
+.pdf-stage canvas { display: block; }
+.evidence-highlight { position: absolute; background: #ffe24b66; outline: 2px solid #bd8b00; pointer-events: none; }
+.evidence-list { max-height: 240px; overflow: auto; }
+
 * {
   box-sizing: border-box;
 }
@@ -169,7 +189,7 @@ main {
 
 .content-grid {
   display: grid;
-  grid-template-columns: minmax(280px, 1fr) 330px;
+  grid-template-columns: minmax(0, 1fr) 280px;
   gap: 24px;
   align-items: start;
 }

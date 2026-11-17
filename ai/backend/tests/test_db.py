@@ -56,7 +56,7 @@ def test_initialization_is_idempotent_and_data_survives_reopen(db_path):
     db.initialize(db_path)
     connection = db.connect(db_path)
     try:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 3
         assert connection.execute("PRAGMA foreign_keys").fetchone()[0] == 1
         row = connection.execute("SELECT * FROM papers WHERE id=?", (str(paper.id),)).fetchone()
         assert row["title"] == paper.title
@@ -75,7 +75,7 @@ def test_transaction_rolls_back_and_closes_connection(db_path):
         with db.transaction(db_path) as connection:
             connection.execute("DELETE FROM papers")
             connection.execute(
-                """INSERT INTO papers VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                """INSERT INTO papers (id,title,abstract,authors,keywords,tags,tasks,methods,datasets,reading_status,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
                 (str(uuid4()), "must rollback", "", "[]", "[]", "[]", "[]", "[]", "[]", "unread", "now"),
             )
             raise RuntimeError("abort")

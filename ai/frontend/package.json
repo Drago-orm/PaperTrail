@@ -10,9 +10,11 @@
   "packageManager": "npm@11.6.2",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build"
+    "build": "tsc --noEmit && vite build",
+    "test:reader": "node --test tests/reader.test.mjs"
   },
   "dependencies": {
+    "pdfjs-dist": "6.5.438",
     "react": "19.3.1",
     "react-dom": "19.3.1"
   },

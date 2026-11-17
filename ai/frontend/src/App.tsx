@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import Library from './Library'
 
 type Health = {
   status: 'ok'
@@ -97,18 +98,7 @@ export default function App() {
         </header>
 
         <div className="content-grid">
-          <section className="library-panel" aria-labelledby="library-title">
-            <div className="panel-header"><h2 id="library-title">我的文献</h2></div>
-            <div className="empty-library">
-              <svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
-                <rect x="15" y="8" width="24" height="32" rx="3" />
-                <path d="M10 13H8v26a5 5 0 0 0 5 5h20M21 17h12M21 23h12M21 29h7" />
-              </svg>
-              <h3>等待导入文献</h3>
-              <p>此页面尚未接入文献列表和上传操作。</p>
-              <p className="muted">先确认服务状态，开启你的论文研读空间。</p>
-            </div>
-          </section>
+          <Library />
 
           <section className="service-panel" aria-labelledby="service-title" aria-busy={service.status === 'loading'}>
             <div className="panel-header">

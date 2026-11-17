@@ -11,21 +11,22 @@ from app.main import create_app
 from app.services import pdf_import
 
 
-def make_pdf(pages, rotation=0, image=False, metadata=False):
+def make_pdf(pages, rotation=0, image=False, metadata=False, page_sizes=None):
     """Tiny standards-based PDF writer for controlled text/layout boundary fixtures."""
     objects = [b'<< /Type /Catalog /Pages 2 0 R >>', b'',
                b'<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>']
     kids = []
     if image:
         objects.append(b'<< /Type /XObject /Subtype /Image /Width 1 /Height 1 /ColorSpace /DeviceGray /BitsPerComponent 8 /Length 1 >>\nstream\n\x00\nendstream')
-    for lines in pages:
+    for page_index, lines in enumerate(pages):
+        width, height = page_sizes[page_index] if page_sizes else (600, 800)
         page_id = len(objects) + 1
         kids.append(f'{page_id} 0 R')
         content = '\n'.join(f'BT /F1 12 Tf {x} {y} Td ({text}) Tj ET' for x, y, text in lines).encode()
         if image:
             content += b'\nq 100 0 0 100 40 500 cm /Im0 Do Q'
         image_resource = '/XObject << /Im0 4 0 R >>' if image else ''
-        objects.append(f'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 600 800] /Rotate {rotation} /Resources << /Font << /F1 3 0 R >> {image_resource} >> /Contents {page_id+1} 0 R >>'.encode())
+        objects.append(f'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {width} {height}] /Rotate {rotation} /Resources << /Font << /F1 3 0 R >> {image_resource} >> /Contents {page_id+1} 0 R >>'.encode())
         objects.append(f'<< /Length {len(content)} >>\nstream\n'.encode()+content+b'\nendstream')
     objects[1] = f'<< /Type /Pages /Count {len(kids)} /Kids [{" ".join(kids)}] >>'.encode()
     info = ''
@@ -185,5 +186,5 @@ def test_v1_upgrade_preserves_and_parses_existing_document(tmp_path):
         assert result['document']['id'] == str(original.id)
         assert result['reused'] and result['report']['status'] == 'parsed'
     with db.transaction(settings.db_path) as conn:
-        assert conn.execute('PRAGMA user_version').fetchone()[0] == 2
+        assert conn.execute('PRAGMA user_version').fetchone()[0] == 3
         assert conn.execute('SELECT title FROM papers WHERE id=?', (str(paper.id),)).fetchone()[0] == paper.title
