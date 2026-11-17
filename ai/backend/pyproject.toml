@@ -1,0 +1,23 @@
+[project]
+name = "papertrail-backend"
+version = "0.1.0"
+description = "研迹 PaperTrail 本地 API"
+requires-python = "==3.14.*"
+dependencies = [
+    "fastapi==0.163.1",
+    "pydantic==2.14.3",
+    "python-dotenv==1.2.4",
+    "uvicorn==0.54.0",
+]
+
+[tool.uv]
+required-version = "==0.13.8"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "httpx==0.28.1",
+    "pytest==9.2.0",
+]
