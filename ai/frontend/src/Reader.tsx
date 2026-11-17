@@ -3,10 +3,14 @@ import { getDocument, GlobalWorkerOptions, type PDFDocumentProxy } from 'pdfjs-d
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { highlightBox } from './coordinates'
 import { errorMessage, type Evidence } from './libraryApi'
+import Bilingual from './Bilingual'
 
 GlobalWorkerOptions.workerSrc = workerUrl
 
-export default function Reader({ documentId, selected }: { documentId: string; selected: Evidence | null }) {
+export default function Reader({ documentId, selected: supplied }: { documentId: string; selected: Evidence | null }) {
+  const [selected,setSelected] = useState(supplied)
+  const [bilingual,setBilingual] = useState(false)
+  useEffect(()=>{setSelected(supplied)},[supplied,documentId])
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null)
   const [pageNumber, setPageNumber] = useState(1)
   const [scale, setScale] = useState(1)
@@ -73,5 +77,7 @@ export default function Reader({ documentId, selected }: { documentId: string; s
     {busy && <p role="status">正在读取 PDF…</p>}
     {error && <p role="alert" className="error-message">{error}</p>}
     <div className="pdf-scroll"><div ref={stage} className="pdf-stage" /></div>
+    <button onClick={()=>setBilingual(value=>!value)}>{bilingual?'收起双语阅读':'展开双语阅读'}</button>
+    {bilingual&&<Bilingual documentId={documentId} selected={selected} pageNumber={pageNumber} onSelect={setSelected}/>}
   </section>
 }

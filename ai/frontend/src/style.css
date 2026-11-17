@@ -409,3 +409,8 @@ main {
 .study-editor textarea { min-height: 70px; }
 .study-matrix th:first-child { width: 100px; }
 .study-matrix th:last-child { width: auto; }
+.bilingual { border-top: 1px solid #ccd8d1; margin-top: 16px; padding-top: 12px; overflow-wrap: anywhere; }
+.bilingual textarea { min-height: 75px; }
+.bilingual-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(200px,1fr)); gap: 16px; }
+.bilingual p { white-space: pre-wrap; }
+.translation-preview, .translation-results article { background: #f5f8f6; padding: 12px; margin: 12px 0; }

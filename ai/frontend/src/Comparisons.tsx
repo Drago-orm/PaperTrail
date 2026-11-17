@@ -123,7 +123,7 @@ export default function Comparisons({active,targetId}:{active:boolean;targetId:s
   function source(study:Study,entry:{evidence_id:string;text:string;origin?:string},key:number|string){
     const block=study.evidence.find(b=>b.id===entry.evidence_id)
     return <details key={key}><summary>{entry.origin==='manual'?'人工摘录':entry.origin==='label'?'标签线索':'笔记引文'} · 物理页{block?.physical_page??'未知'}</summary><blockquote>{entry.text}</blockquote>
-      {block?<button onClick={()=>setReader({study,block})}>查看此证据原文</button>:<p role="alert">快照证据缺失，无法定位。</p>}</details>
+      {block?<button onClick={()=>setReader({study,block:{...block}})}>查看此证据原文</button>:<p role="alert">快照证据缺失，无法定位。</p>}</details>
   }
   function clues(study:Study,value:Clues){return <><p>{stateLabels[value.status]??value.status}：{value.value??'—（留空）'}</p><p>{value.warning}</p>{value.entries.map((e,i)=>source(study,e,i))}</>}
   const canGenerate=selected.length>=2&&selected.length<=5&&selected.every(p=>selections[p.id]?.note_id)
