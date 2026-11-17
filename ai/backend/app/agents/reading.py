@@ -1,11 +1,12 @@
 """Reading role and deterministic validation; semantic verification is step 06."""
 import json
 from typing import Literal
+from uuid import UUID
 
 from pydantic import Field, model_validator
 
 from app.config import PROJECT_ROOT, Settings
-from app.schemas import AnalysisItem, EvidenceBlock, Schema
+from app.schemas import AnalysisItem, EvidenceBlock, EvidenceQuote, Schema
 from app.agents.client import Completion, complete
 
 PROMPT_VERSION = 'reading-v1'
@@ -31,22 +32,30 @@ class ReadingOutput(Schema):
 
 def validate_output(content: str, evidence: list[EvidenceBlock]) -> list[AnalysisItem]:
     output = ReadingOutput.model_validate_json(content)
+    return validate_items(output.items, evidence)
+
+
+def validate_items(items: list[ReadingItem], evidence: list[EvidenceBlock]) -> list[AnalysisItem]:
     sources = {block.id: block.text for block in evidence}
     checked = []
-    for item in output.items:
+    for item in items:
         if item.verification_status == 'not_reported':
             if item.content != '未报告' or item.evidence_ids or item.quotes:
                 raise ValueError('未报告条目必须明确写未报告且无虚构引用')
         else:
-            if not item.evidence_ids or set(item.evidence_ids) != {quote.evidence_id for quote in item.quotes}:
-                raise ValueError('每个分析条目必须保留对应证据与原文片段')
-            for quote in item.quotes:
-                if not quote.text.strip() or quote.evidence_id not in sources or quote.text not in sources[quote.evidence_id]:
-                    raise ValueError('证据ID或原文片段不在本次读取范围')
+            check_quotes(item.evidence_ids, item.quotes, sources, required=True)
         values = item.model_dump()
         values['verification_reason'] = '仅程序存在性检查；未进行语义核查。未报告仅指本次输入范围。'
         checked.append(AnalysisItem.model_validate(values))
     return checked
+
+
+def check_quotes(evidence_ids: list[UUID], quotes: list[EvidenceQuote], sources: dict[UUID, str], required: bool) -> None:
+    if (required and not evidence_ids) or set(evidence_ids) != {quote.evidence_id for quote in quotes}:
+        raise ValueError('分析或核查条目必须保留对应证据与原文片段')
+    for quote in quotes:
+        if not quote.text.strip() or quote.evidence_id not in sources or quote.text not in sources[quote.evidence_id]:
+            raise ValueError('证据ID或原文片段不在本次读取范围')
 
 
 def replay(file_hash: str, evidence: list[EvidenceBlock]) -> Completion:

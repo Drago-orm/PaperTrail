@@ -23,8 +23,24 @@ class ManualRequest(Schema):
     changes: dict[UUID, str]
 
 
+class VerificationRequest(Schema):
+    base_note_id: UUID
+    revise: bool = True
+
+
 def reading_router(settings: Settings) -> APIRouter:
     router = APIRouter()
+
+    @router.post('/api/documents/{document_id}/verification-runs', response_model=Run, status_code=202)
+    def verify(document_id: UUID, request: VerificationRequest, http_request: Request):
+        try:
+            return http_request.app.state.reading_worker.start(document_id, 'live', '', '', request.base_note_id, request.revise)
+        except ModelError as exc:
+            raise HTTPException(503, str(exc)) from exc
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
 
     @router.post('/api/documents/{document_id}/reading-runs', response_model=Run, status_code=202)
     def start(document_id: UUID, request: ReadingRequest, http_request: Request):

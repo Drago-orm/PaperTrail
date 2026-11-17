@@ -111,6 +111,8 @@ MIGRATIONS = (SCHEMA_V1, (
     "ALTER TABLE papers ADD COLUMN removed INTEGER NOT NULL DEFAULT 0 CHECK(removed IN (0,1))",
 ), (
     "ALTER TABLE notes ADD COLUMN source_mode TEXT NOT NULL DEFAULT 'unknown' CHECK(source_mode IN ('live','replay','unknown'))",
+), (
+    "ALTER TABLE notes ADD COLUMN verification_run_id TEXT REFERENCES runs(id)",
 ))
 
 
@@ -176,6 +178,10 @@ def create_note(db_path: Path, note: Note) -> Note:
 
 def insert_note(connection: sqlite3.Connection, note: Note) -> Note:
     note = Note.model_validate(note.model_dump())
+    if note.verification_run_id is not None:
+        run = connection.execute('SELECT document_id FROM runs WHERE id=?', (str(note.verification_run_id),)).fetchone()
+        if run is None or run['document_id'] != str(note.document_id):
+            raise ValueError('核查任务必须存在并属于当前文件版本')
     if note.parent_note_id is not None:
         parent = connection.execute(
             "SELECT version FROM notes WHERE id=? AND document_id=? AND paper_id=?",
@@ -195,14 +201,14 @@ def insert_note(connection: sqlite3.Connection, note: Note) -> Note:
             raise ValueError("笔记证据必须存在并属于当前文件版本")
     connection.execute(
         """INSERT INTO notes
-           (id,paper_id,document_id,version,items_json,writing_items_json,is_user_edited,parent_note_id,created_at,source_mode)
-           VALUES (?,?,?,?,?,?,?,?,?,?)""",
+           (id,paper_id,document_id,version,items_json,writing_items_json,is_user_edited,parent_note_id,created_at,source_mode,verification_run_id)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
         (
             str(note.id), str(note.paper_id), str(note.document_id), note.version,
             json.dumps([item.model_dump(mode="json") for item in note.items], ensure_ascii=False),
             json.dumps([item.model_dump(mode="json") for item in note.writing_items], ensure_ascii=False),
             int(note.is_user_edited), str(note.parent_note_id) if note.parent_note_id else None,
-            note.created_at.isoformat(), note.source_mode,
+            note.created_at.isoformat(), note.source_mode, str(note.verification_run_id) if note.verification_run_id else None,
         ),
     )
     return note

@@ -107,6 +107,7 @@ class Note(Schema):
     writing_items: list[AnalysisItem] = Field(default_factory=list)
     is_user_edited: bool = False
     source_mode: Literal["live", "replay", "unknown"] = "unknown"
+    verification_run_id: UUID | None = None
     parent_note_id: UUID | None = None
     created_at: AwareDatetime = Field(default_factory=utc_now)
 

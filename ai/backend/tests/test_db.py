@@ -56,7 +56,7 @@ def test_initialization_is_idempotent_and_data_survives_reopen(db_path):
     db.initialize(db_path)
     connection = db.connect(db_path)
     try:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 4
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 5
         assert connection.execute("PRAGMA foreign_keys").fetchone()[0] == 1
         row = connection.execute("SELECT * FROM papers WHERE id=?", (str(paper.id),)).fetchone()
         assert row["title"] == paper.title
@@ -105,6 +105,7 @@ def test_v3_notes_migrate_without_inventing_origin(tmp_path, monkeypatch):
     with db.transaction(path) as connection:
         row = connection.execute('SELECT * FROM notes WHERE id=?', (note_id,)).fetchone()
         assert row['source_mode'] == 'unknown' and row['version'] == 1
+        assert row['verification_run_id'] is None
 
 
 def test_failed_migration_rolls_back_schema_and_version(tmp_path, monkeypatch):
