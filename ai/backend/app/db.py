@@ -109,6 +109,8 @@ MIGRATIONS = (SCHEMA_V1, (
     )""",
 ), (
     "ALTER TABLE papers ADD COLUMN removed INTEGER NOT NULL DEFAULT 0 CHECK(removed IN (0,1))",
+), (
+    "ALTER TABLE notes ADD COLUMN source_mode TEXT NOT NULL DEFAULT 'unknown' CHECK(source_mode IN ('live','replay','unknown'))",
 ))
 
 
@@ -168,35 +170,39 @@ def create_paper(db_path: Path, paper: Paper) -> Paper:
 
 
 def create_note(db_path: Path, note: Note) -> Note:
-    note = Note.model_validate(note.model_dump())
     with transaction(db_path) as connection:
-        if note.parent_note_id is not None:
-            parent = connection.execute(
-                "SELECT version FROM notes WHERE id=? AND document_id=? AND paper_id=?",
-                (str(note.parent_note_id), str(note.document_id), str(note.paper_id)),
-            ).fetchone()
-            if parent is None or parent["version"] + 1 != note.version:
-                raise ValueError("父笔记快照必须属于同一文档且版本连续")
-        evidence_ids = {
-            str(evidence_id) for item in note.items + note.writing_items
-            for evidence_id in item.evidence_ids
-        }
-        for evidence_id in evidence_ids:
-            row = connection.execute(
-                "SELECT document_id FROM evidence_blocks WHERE id=?", (evidence_id,)
-            ).fetchone()
-            if row is None or row["document_id"] != str(note.document_id):
-                raise ValueError("笔记证据必须存在并属于当前文件版本")
-        connection.execute(
-            """INSERT INTO notes
-               (id,paper_id,document_id,version,items_json,writing_items_json,is_user_edited,parent_note_id,created_at)
-               VALUES (?,?,?,?,?,?,?,?,?)""",
-            (
-                str(note.id), str(note.paper_id), str(note.document_id), note.version,
-                json.dumps([item.model_dump(mode="json") for item in note.items], ensure_ascii=False),
-                json.dumps([item.model_dump(mode="json") for item in note.writing_items], ensure_ascii=False),
-                int(note.is_user_edited), str(note.parent_note_id) if note.parent_note_id else None,
-                note.created_at.isoformat(),
-            ),
-        )
+        return insert_note(connection, note)
+
+
+def insert_note(connection: sqlite3.Connection, note: Note) -> Note:
+    note = Note.model_validate(note.model_dump())
+    if note.parent_note_id is not None:
+        parent = connection.execute(
+            "SELECT version FROM notes WHERE id=? AND document_id=? AND paper_id=?",
+            (str(note.parent_note_id), str(note.document_id), str(note.paper_id)),
+        ).fetchone()
+        if parent is None or parent["version"] + 1 != note.version:
+            raise ValueError("父笔记快照必须属于同一文档且版本连续")
+    evidence_ids = {
+        str(evidence_id) for item in note.items + note.writing_items
+        for evidence_id in item.evidence_ids
+    }
+    for evidence_id in evidence_ids:
+        row = connection.execute(
+            "SELECT document_id FROM evidence_blocks WHERE id=?", (evidence_id,)
+        ).fetchone()
+        if row is None or row["document_id"] != str(note.document_id):
+            raise ValueError("笔记证据必须存在并属于当前文件版本")
+    connection.execute(
+        """INSERT INTO notes
+           (id,paper_id,document_id,version,items_json,writing_items_json,is_user_edited,parent_note_id,created_at,source_mode)
+           VALUES (?,?,?,?,?,?,?,?,?,?)""",
+        (
+            str(note.id), str(note.paper_id), str(note.document_id), note.version,
+            json.dumps([item.model_dump(mode="json") for item in note.items], ensure_ascii=False),
+            json.dumps([item.model_dump(mode="json") for item in note.writing_items], ensure_ascii=False),
+            int(note.is_user_edited), str(note.parent_note_id) if note.parent_note_id else None,
+            note.created_at.isoformat(), note.source_mode,
+        ),
+    )
     return note

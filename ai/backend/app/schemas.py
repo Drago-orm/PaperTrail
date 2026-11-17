@@ -67,12 +67,18 @@ class EvidenceBlock(Schema):
         return self
 
 
+class EvidenceQuote(Schema):
+    evidence_id: UUID
+    text: str = Field(min_length=1, max_length=1200)
+
+
 class AnalysisItem(Schema):
     id: UUID = Field(default_factory=uuid4)
     field: str = Field(min_length=1)
     content_type: Literal["author_statement", "system_analysis", "research_idea"]
     content: str = Field(min_length=1)
     evidence_ids: list[UUID] = Field(default_factory=list)
+    quotes: list[EvidenceQuote] = Field(default_factory=list)
     verification_status: Literal[
         "unchecked", "supported", "partially_supported", "unsupported", "not_reported"
     ] = "unchecked"
@@ -100,6 +106,7 @@ class Note(Schema):
     items: list[AnalysisItem] = Field(default_factory=list)
     writing_items: list[AnalysisItem] = Field(default_factory=list)
     is_user_edited: bool = False
+    source_mode: Literal["live", "replay", "unknown"] = "unknown"
     parent_note_id: UUID | None = None
     created_at: AwareDatetime = Field(default_factory=utc_now)
 

@@ -1,3 +1,9 @@
+.reading-notes { margin-top: 24px; border-top: 1px solid #ccd8d1; padding-top: 20px; }
+.reading-notes p { margin: 8px 0; overflow-wrap: anywhere; }
+.run-status { padding: 10px; background: #f2f6f3; border-radius: 6px; margin: 12px 0; }
+.note-item { border-bottom: 1px solid #e0e7e2; padding: 14px 0; }
+.note-item textarea { min-height: 90px; }
+.note-item blockquote { margin: 10px 0; padding-left: 12px; border-left: 3px solid #a6bdaf; overflow-wrap: anywhere; font-size: 12px; }
 :root {
   font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
   color: #233c36;

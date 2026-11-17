@@ -56,7 +56,7 @@ def test_initialization_is_idempotent_and_data_survives_reopen(db_path):
     db.initialize(db_path)
     connection = db.connect(db_path)
     try:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 3
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 4
         assert connection.execute("PRAGMA foreign_keys").fetchone()[0] == 1
         row = connection.execute("SELECT * FROM papers WHERE id=?", (str(paper.id),)).fetchone()
         assert row["title"] == paper.title
@@ -86,6 +86,25 @@ def test_transaction_rolls_back_and_closes_connection(db_path):
         assert reopened.execute("SELECT COUNT(*) FROM papers").fetchone()[0] == 0
     finally:
         reopened.close()
+
+
+def test_v3_notes_migrate_without_inventing_origin(tmp_path, monkeypatch):
+    path = tmp_path / 'v3.sqlite3'
+    with monkeypatch.context() as old:
+        old.setattr(db, 'MIGRATIONS', db.MIGRATIONS[:3])
+        db.initialize(path)
+    paper = db.create_paper(path, Paper(title='Existing notes'))
+    document = add_document(path, paper)
+    note_id = str(uuid4())
+    with db.transaction(path) as connection:
+        connection.execute('''INSERT INTO notes
+            (id,paper_id,document_id,version,items_json,writing_items_json,is_user_edited,created_at)
+            VALUES (?,?,?,1,'[]','[]',0,'2026-11-17T00:00:00Z')''',
+            (note_id, str(paper.id), str(document.id)))
+    db.initialize(path)
+    with db.transaction(path) as connection:
+        row = connection.execute('SELECT * FROM notes WHERE id=?', (note_id,)).fetchone()
+        assert row['source_mode'] == 'unknown' and row['version'] == 1
 
 
 def test_failed_migration_rolls_back_schema_and_version(tmp_path, monkeypatch):

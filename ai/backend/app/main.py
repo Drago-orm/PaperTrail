@@ -7,6 +7,8 @@ from pydantic import BaseModel
 
 from app.config import Settings
 from app.api.library import library_router
+from app.api.reading import reading_router
+from app.services.reading_runs import ReadingWorker
 from app.db import initialize
 from app.services.pdf_import import ImportRejected, ImportResult, get_result, import_pdf
 
@@ -28,11 +30,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         initialize(settings.db_path)
-        yield
+        application.state.reading_worker = ReadingWorker(settings)
+        try:
+            yield
+        finally:
+            application.state.reading_worker.close()
 
     application = FastAPI(title="研迹 PaperTrail", version="0.1.0", lifespan=lifespan)
     application.state.settings = settings
     application.include_router(library_router(settings))
+    application.include_router(reading_router(settings))
 
     @application.post('/api/documents', response_model=ImportResult)
     def upload_document(file: UploadFile, paper_id: UUID | None = Form(default=None)) -> ImportResult:

@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import Reader from './Reader'
+import Notes from './Notes'
 import { errorMessage, papers, request, result, type Evidence, type Paper, type Result } from './libraryApi'
 
 const emptyFilters = { q: '', title: '', author: '', abstract: '', keyword: '', tag: '', reading_status: '' }
@@ -139,6 +140,11 @@ export default function Library() {
             {report.report.metadata_candidates.author && <button onClick={() => setDraft({ ...draft, authors: report.report.metadata_candidates.author ?? '' })}>采用作者候选</button>}
           </>}
           <Reader key={documentId} documentId={documentId} selected={evidence} />
+          <Notes key={'notes-'+documentId} documentId={documentId} onEvidence={id => {
+            const block = report?.evidence.find(b => b.id === id)
+            if (block) setEvidence({ ...block })
+            else setReportError('引用证据尚未载入或已缺失，请重新选择文件版本')
+          }} />
           <h3>原文证据</h3>
           {report?.evidence.length === 0 && <p>没有可靠证据块，请查看解析限制。</p>}
           <ul className="evidence-list">{report?.evidence.map(block => <li key={block.id}>

@@ -128,7 +128,7 @@ export default function App() {
                     {model.errors.length > 0 && <ul className="error-message">{model.errors.map((message) => <li key={message}>{message}</li>)}</ul>}
                     <p className="muted">
                       {model.configured
-                        ? '当前版本尚未提供 AI 分析操作。'
+                        ? '选择文件后可运行精读，结果须对照原文核查。'
                         : '请在后端环境中补全配置，重启服务后重新检查。'}
                     </p>
                   </>
