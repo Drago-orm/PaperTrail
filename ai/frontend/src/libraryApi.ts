@@ -32,7 +32,15 @@ function evidence(value: unknown): value is Evidence {
 export async function request(url: string, options?: RequestInit): Promise<unknown> {
   const response = await fetch(url, options)
   const data: unknown = await response.json()
-  if (!response.ok) throw new Error(record(data) && typeof data.detail === 'string' ? data.detail : `请求失败 HTTP ${response.status}`)
+  if (!response.ok) {
+    if (record(data) && typeof data.detail === 'string') throw new Error(data.detail)
+    if (record(data) && Array.isArray(data.detail)) {
+      const issues = data.detail.filter(record).filter(value=>typeof value.msg==='string' && Array.isArray(value.loc))
+        .slice(0,8).map(value=>`${(value.loc as unknown[]).join('.')}: ${String(value.msg)}`)
+      if (issues.length) throw new Error(issues.join('；'))
+    }
+    throw new Error(`请求失败 HTTP ${response.status}`)
+  }
   return data
 }
 export async function papers(query: string): Promise<Paper[]> {

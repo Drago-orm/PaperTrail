@@ -125,6 +125,48 @@ class Note(Schema):
         return self
 
 
+class ExperimentArm(Schema):
+    model: str = Field(min_length=1, max_length=200)
+    dataset: str = Field(min_length=1, max_length=200)
+    split: str = Field(min_length=1, max_length=200)
+    settings: dict[str, str] = Field(min_length=1, max_length=10)
+
+
+class MinimumExperiment(Schema):
+    control: ExperimentArm
+    treatment: ExperimentArm
+    changed_factor: str = Field(min_length=1, max_length=80)
+    metric: str = Field(min_length=1, max_length=200)
+    evaluation: str = Field(min_length=1, max_length=600)
+    pending_confirmations: list[str] = Field(default_factory=list, max_length=8)
+
+    @model_validator(mode='after')
+    def one_factor(self) -> 'MinimumExperiment':
+        for arm in (self.control, self.treatment):
+            normalized = {key.strip():value.strip() for key,value in arm.settings.items()}
+            if len(normalized)!=len(arm.settings):
+                raise ValueError('实验设置名称去除空格后不能重复')
+            arm.settings = normalized
+            if not all(value.strip() for value in (arm.model, arm.dataset, arm.split)):
+                raise ValueError('模型、数据集和划分不能留白')
+            if any(not key.strip() or not value.strip() or len(key)>80 or len(value)>300 for key, value in arm.settings.items()):
+                raise ValueError('实验设置须为明确的短名称和值')
+        if any(getattr(self.control, key).strip() != getattr(self.treatment, key).strip() for key in ('model', 'dataset', 'split')):
+            raise ValueError('最小对照必须使用同一模型、数据集和划分')
+        if self.control.settings.keys() != self.treatment.settings.keys():
+            raise ValueError('对照两组必须列出相同的设置项')
+        self.changed_factor = self.changed_factor.strip()
+        changed = [key for key in self.control.settings if self.control.settings[key].strip() != self.treatment.settings[key].strip()]
+        if changed != [self.changed_factor] or not self.metric.strip() or not self.evaluation.strip():
+            raise ValueError('必须且只能改变changed_factor指定的一个设置，并说明指标与评估方法')
+        return self
+
+    def summary(self) -> str:
+        return (f'{self.control.model}；{self.control.dataset}/{self.control.split}；仅改变{self.changed_factor}：'
+                f'{self.control.settings[self.changed_factor]}→{self.treatment.settings[self.changed_factor]}；'
+                f'{self.metric}；{self.evaluation}')
+
+
 class Idea(Schema):
     id: UUID = Field(default_factory=uuid4)
     question: str = Field(min_length=1)
@@ -137,6 +179,24 @@ class Idea(Schema):
     novelty_checks: list[str] = Field(default_factory=list)
     status: Literal["draft", "confirmed", "testing", "archived"] = "draft"
     created_at: AwareDatetime = Field(default_factory=utc_now)
+    root_id: UUID | None = None
+    version: int = Field(default=1, gt=0)
+    parent_idea_id: UUID | None = None
+    is_user_edited: bool = False
+    generation_run_id: UUID | None = None
+    experiment: MinimumExperiment | None = None
+
+    @model_validator(mode='after')
+    def snapshot(self) -> 'Idea':
+        if self.root_id is None:
+            self.root_id = self.id
+        if (self.version == 1) != (self.parent_idea_id is None) or self.parent_idea_id == self.id:
+            raise ValueError('Idea修订须保留父版本，首版不能引用父版本')
+        if self.version == 1 and self.root_id != self.id:
+            raise ValueError('Idea首版必须是自身根版本')
+        if self.experiment is not None:
+            self.minimum_experiment = self.experiment.summary()
+        return self
 
 
 class IdeaSource(Schema):
@@ -146,6 +206,7 @@ class IdeaSource(Schema):
     document_id: UUID
     evidence_id: UUID | None = None
     note_id: UUID | None = None
+    item_id: UUID | None = None
 
     @model_validator(mode="after")
     def check_source(self) -> "IdeaSource":

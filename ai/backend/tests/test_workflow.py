@@ -51,7 +51,7 @@ def transports(monkeypatch):
 
 
 def start(client, did, **changes):
-    response = client.post(f'/api/documents/{did}/workflow-runs', json={'revise': False, **changes})
+    response = client.post(f'/api/documents/{did}/workflow-runs', json={'revise': False, 'include_idea':False, **changes})
     assert response.status_code == 202, response.text
     return response.json()
 

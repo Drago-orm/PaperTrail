@@ -33,6 +33,7 @@ class WorkflowRequest(ReadingRequest):
     interest: str = Field(default='', max_length=1000)
     resources: str = Field(default='', max_length=1000)
     revise: bool = True
+    include_idea: bool = True
 
 
 def reading_router(settings: Settings) -> APIRouter:
@@ -43,7 +44,7 @@ def reading_router(settings: Settings) -> APIRouter:
         try:
             conditions = {key: getattr(request, key).replace('\r\n', '\n').strip() for key in ('interest', 'resources')}
             return http_request.app.state.reading_worker.start(document_id, 'live', request.section.strip(), request.query.strip(),
-                                                               revise=request.revise, conditions=conditions)
+                                                               revise=request.revise, conditions=conditions, include_idea=request.include_idea)
         except ModelError as exc:
             raise HTTPException(503, str(exc)) from exc
         except LookupError as exc:

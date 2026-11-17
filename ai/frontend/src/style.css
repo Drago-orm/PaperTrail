@@ -1,4 +1,7 @@
 .reading-notes { margin-top: 24px; border-top: 1px solid #ccd8d1; padding-top: 20px; }
+.idea-library textarea { min-height: 70px; margin: 4px 0 12px; }
+.idea-library p, .idea-source { overflow-wrap: anywhere; }
+.idea-source { padding: 8px; margin: 6px 0; background: #f2f6f3; line-height: 1.6; }
 .reading-notes p { margin: 8px 0; overflow-wrap: anywhere; }
 .run-status { padding: 10px; background: #f2f6f3; border-radius: 6px; margin: 12px 0; }
 .note-item { border-bottom: 1px solid #e0e7e2; padding: 14px 0; }

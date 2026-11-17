@@ -89,6 +89,14 @@ def retry(settings: Settings, run_id: UUID) -> Run:
                                   unresolved_item_ids=child.output['unresolved_item_ids'])
                     conn.execute("UPDATE run_steps SET status='succeeded',error=NULL,output=? WHERE run_id=? AND role='verification' AND attempt=?",
                                  (json.dumps(node), str(run.id), node['attempt']))
+        idea_node = output.get('nodes', {}).get('idea', {})
+        if idea_node.get('child_run_id') and not idea_node.get('accounted'):
+            child_row = conn.execute('SELECT * FROM runs WHERE id=?', (idea_node['child_run_id'],)).fetchone()
+            child = run_from_row(child_row) if child_row else None
+            if child and child.status == 'succeeded' and child.input_scope.get('parent_run_id') == str(run.id):
+                account(output, Completion('',child.output.get('usage'),child.output['api_calls']),
+                        usage_complete=child.output.get('usage_complete',False))
+                idea_node.update(status='failed',accounted=True,error='Idea子任务已保存，恢复将复用有效缓存')
         if latest_id(conn, run.document_id) != output.get('note_id', run.input_scope['base_note_id']):
             raise ValueError('笔记已有新版本，请启动新流程；未覆盖人工修改')
         if any(node.get('status') == 'running' for node in output.get('nodes', {}).values()):
@@ -242,6 +250,55 @@ def execute_workflow(worker: ReadingWorker, run: Run):
                 persist(conn)
             raise
 
+    def idea_node(state: State):
+        nonlocal active_role
+        active_role = 'idea'
+        from app.agents.ideas import SourceChoice, PROMPT_VERSION
+        from app.services.idea_runs import prepare, execute_idea
+        with closing(db.connect(settings.db_path)) as conn:
+            row = conn.execute('SELECT * FROM notes WHERE id=?',(state['note_id'],)).fetchone()
+        base = note_from_row(row) if row else None
+        choices = [SourceChoice(note_id=base.id,item_id=item.id) for item in base.items+base.writing_items
+                   if item.verification_status=='supported'][:6] if base else []
+        if not choices:
+            raise ValueError('没有已支持的核查来源，Idea未生成；请先解决核查疑点')
+        facts, evidence, key = prepare(settings,choices,run.input_scope['conditions'])
+        if output['budget_used']+2 > run.input_scope['max_api_calls']:
+            raise ValueError('Idea节点调用预算已耗尽，未继续调用模型')
+        worker.stage(run,'idea')
+        output['budget_used'] += 2
+        info = {'status':'running','cached':False,'cache_key':key,'attempt':attempt,'note_id':str(base.id),
+            'physical_pages':sorted({value['physical_page'] for value in evidence}),
+            'context_chars':sum(len(value['text']) for value in evidence),'input_note_version':base.version,'error':None}
+        output['nodes']['idea'] = info
+        scope = {'mode':'live','role':'idea','stage':'queued','parent_run_id':str(run.id),
+                 'sources':[choice.model_dump(mode='json') for choice in choices],
+                 'conditions':run.input_scope['conditions'],'max_api_calls':2}
+        child = Run(document_id=run.document_id,model_name=settings.model_name,prompt_version=PROMPT_VERSION,
+                    parse_version=run.parse_version,input_scope=scope)
+        info['child_run_id'] = str(child.id)
+        with db.transaction(settings.db_path) as conn:
+            db.insert_run(conn,child,'idea')
+            conn.execute('''INSERT INTO run_steps(id,run_id,role,attempt,status,output) VALUES (?,?,?,?,'running',?)''',
+                         (str(uuid4()),str(run.id),'idea',attempt,json.dumps(info)))
+            persist(conn)
+        phase_started = time.monotonic()
+        execute_idea(worker,child)
+        child = get_run(settings,child.id)
+        account(output,Completion('',child.output.get('usage'),child.output['api_calls']),
+                usage_complete=child.output.get('usage_complete',False))
+        info.update(accounted=True,status=child.status,error=child.error,api_calls=child.output['api_calls'],
+                    cached=child.output.get('cached',False),idea_id=child.output.get('idea_id'))
+        with db.transaction(settings.db_path) as conn:
+            if child.status=='succeeded':
+                output['idea_id'] = child.output['idea_id']
+            conn.execute('UPDATE run_steps SET status=?,output=?,elapsed_ms=?,error=? WHERE run_id=? AND role=? AND attempt=?',
+                (child.status,json.dumps(info),int((time.monotonic()-phase_started)*1000),child.error,str(run.id),'idea',attempt))
+            persist(conn)
+        if child.status!='succeeded':
+            raise ValueError('Idea节点失败：'+(child.error or '原因未知'))
+        return state
+
     try:
         graph = StateGraph(State)
         for role in ('reading', 'writing', 'verification'):
@@ -249,8 +306,13 @@ def execute_workflow(worker: ReadingWorker, run: Run):
         graph.add_edge(START, 'reading')
         graph.add_edge('reading', 'writing')
         graph.add_edge('writing', 'verification')
-        graph.add_edge('verification', END)
-        graph.compile().invoke({'note_id': run.input_scope['base_note_id']}, {'recursion_limit': 5})
+        if run.input_scope.get('include_idea'):
+            graph.add_node('idea',idea_node)
+            graph.add_edge('verification','idea')
+            graph.add_edge('idea',END)
+        else:
+            graph.add_edge('verification', END)
+        graph.compile().invoke({'note_id': run.input_scope['base_note_id']}, {'recursion_limit': 6})
         run.input_scope['stage'] = 'saved'
         status, error = 'succeeded', None
     except Exception as exc:

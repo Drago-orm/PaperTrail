@@ -114,6 +114,16 @@ MIGRATIONS = (SCHEMA_V1, (
     "ALTER TABLE notes ADD COLUMN source_mode TEXT NOT NULL DEFAULT 'unknown' CHECK(source_mode IN ('live','replay','unknown'))",
 ), (
     "ALTER TABLE notes ADD COLUMN verification_run_id TEXT REFERENCES runs(id)",
+), (
+    "ALTER TABLE ideas ADD COLUMN root_id TEXT REFERENCES ideas(id)",
+    "UPDATE ideas SET root_id=id",
+    "ALTER TABLE ideas ADD COLUMN version INTEGER NOT NULL DEFAULT 1 CHECK(version>0)",
+    "ALTER TABLE ideas ADD COLUMN parent_idea_id TEXT REFERENCES ideas(id)",
+    "ALTER TABLE ideas ADD COLUMN is_user_edited INTEGER NOT NULL DEFAULT 0 CHECK(is_user_edited IN (0,1))",
+    "ALTER TABLE ideas ADD COLUMN generation_run_id TEXT REFERENCES runs(id)",
+    "ALTER TABLE ideas ADD COLUMN experiment_json TEXT CHECK(experiment_json IS NULL OR json_valid(experiment_json))",
+    "CREATE UNIQUE INDEX idea_root_version ON ideas(root_id,version)",
+    "ALTER TABLE idea_sources ADD COLUMN item_id TEXT",
 ))
 
 

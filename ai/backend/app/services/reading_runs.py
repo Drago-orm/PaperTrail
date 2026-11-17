@@ -84,14 +84,15 @@ class ReadingWorker:
         self.settings = settings
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='papertrail-reading')
         with db.transaction(settings.db_path) as conn:
-            conn.execute("UPDATE runs SET status='failed',error='服务重启中断，请重试失败节点或重新运行' WHERE status IN ('pending','running') AND id IN (SELECT run_id FROM run_steps WHERE role IN ('reading','writing','verification'))")
-            conn.execute("UPDATE run_steps SET status='failed',error='服务重启中断，请重试失败节点或重新运行' WHERE role IN ('reading','writing','verification') AND status IN ('pending','running')")
+            conn.execute("UPDATE runs SET status='failed',error='服务重启中断，请重试失败节点或重新运行' WHERE status IN ('pending','running') AND id IN (SELECT run_id FROM run_steps WHERE role IN ('reading','writing','verification','idea'))")
+            conn.execute("UPDATE run_steps SET status='failed',error='服务重启中断，请重试失败节点或重新运行' WHERE role IN ('reading','writing','verification','idea') AND status IN ('pending','running')")
 
     def close(self):
         self.executor.shutdown(wait=True)
 
     def start(self, document_id: UUID, mode: str, section: str, query: str,
-              base_note_id: UUID | None = None, revise: bool = True, conditions: dict | None = None) -> Run:
+              base_note_id: UUID | None = None, revise: bool = True, conditions: dict | None = None,
+              include_idea: bool = True) -> Run:
         if mode == 'live':
             missing, errors = self.settings.model_status()
             if missing or errors:
@@ -129,10 +130,11 @@ class ReadingWorker:
                 from app.services.workflow import config_digest
                 latest = conn.execute('SELECT id FROM notes WHERE document_id=? ORDER BY version DESC LIMIT 1', (str(document_id),)).fetchone()
                 scope.update(base_note_id=latest['id'] if latest else None, conditions=conditions,
-                             revision_limit=int(revise), resume_count=0, max_api_calls=24,
+                             revision_limit=int(revise), resume_count=0, max_api_calls=26 if include_idea else 24,
+                             include_idea=include_idea,
                              config_digest=config_digest(self.settings))
             run = Run(document_id=document_id, model_name=self.settings.model_name if mode == 'live' else 'fixed-replay',
-                      prompt_version='workflow-v1' if conditions is not None else verification.PROMPT_VERSION if base_note_id else reading.PROMPT_VERSION,
+                      prompt_version=('workflow-v2' if include_idea else 'workflow-v1') if conditions is not None else verification.PROMPT_VERSION if base_note_id else reading.PROMPT_VERSION,
                       parse_version=document['parse_version'], input_scope=scope)
             db.insert_run(conn, run, 'reading' if conditions is not None else role)
         self.executor.submit(self.execute, run.id)
@@ -142,6 +144,25 @@ class ReadingWorker:
         from app.services.workflow import retry
         run = retry(self.settings, run_id)
         self.executor.submit(self.execute, run.id)
+        return run
+
+    def start_idea(self, sources, conditions) -> Run:
+        from app.agents.ideas import PROMPT_VERSION
+        from app.services.idea_runs import prepare
+        missing, errors = self.settings.model_status()
+        if missing or errors:
+            raise ModelError('模型配置缺失或无效：'+'、'.join(missing+errors))
+        facts, _, _ = prepare(self.settings,sources,conditions)
+        with db.transaction(self.settings.db_path) as conn:
+            active = conn.execute("SELECT document_id FROM runs WHERE status IN ('pending','running')").fetchall()
+            if len(active)>=10 or any(row['document_id'] in {value['document_id'] for value in facts} for row in active):
+                raise ValueError('来源文件已有活动任务或队列已满')
+            scope = {'mode':'live','role':'idea','stage':'queued','sources':[source.model_dump(mode='json') for source in sources],
+                     'conditions':conditions,'max_api_calls':2,'max_blocks':40,'max_context_chars':16000}
+            run = Run(document_id=facts[0]['document_id'],model_name=self.settings.model_name,prompt_version=PROMPT_VERSION,
+                      parse_version=facts[0]['parse_version'],input_scope=scope)
+            db.insert_run(conn,run,'idea')
+        self.executor.submit(self.execute,run.id)
         return run
 
     def stage(self, run: Run, stage: str):
@@ -155,6 +176,9 @@ class ReadingWorker:
         started = time.monotonic()
         reply = None
         try:
+            if run.input_scope.get('role') == 'idea':
+                from app.services.idea_runs import execute_idea
+                return execute_idea(self,run)
             if run.input_scope.get('role') == 'workflow':
                 from app.services.workflow import execute_workflow
                 return execute_workflow(self, run)

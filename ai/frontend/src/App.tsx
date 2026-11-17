@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import Library from './Library'
+import Ideas from './Ideas'
 
 type Health = {
   status: 'ok'
@@ -35,6 +36,9 @@ function isHealth(value: unknown): value is Health {
 }
 
 export default function App() {
+  const [route,setRoute] = useState(window.location.hash)
+  const ideaView = route.startsWith('#ideas')
+  useEffect(()=>{const change=()=>setRoute(window.location.hash);window.addEventListener('hashchange',change);return()=>window.removeEventListener('hashchange',change)},[])
   const [attempt, setAttempt] = useState(0)
   const [service, setService] = useState<ServiceState>({ status: 'loading' })
 
@@ -83,7 +87,8 @@ export default function App() {
           <span><strong>研迹</strong><small>PaperTrail</small></span>
         </a>
         <p className="nav-label">工作空间</p>
-        <div className="nav-current" aria-current="page">文献库</div>
+        <a className={!ideaView?'nav-current':''} href="#library">文献库</a>
+        <a className={ideaView?'nav-current':''} href="#ideas">Idea 库</a>
         <p className="sidebar-note">本地论文研读空间</p>
       </aside>
 
@@ -91,14 +96,15 @@ export default function App() {
         <header className="page-header">
           <div>
             <p className="eyebrow">PAPERTRAIL / LIBRARY</p>
-            <h1>文献库</h1>
+            <h1>{ideaView?'Idea 库':'文献库'}</h1>
             <p className="muted">阅读的起点，研究线索的归处。</p>
           </div>
           <span className="local-badge">本地运行</span>
         </header>
 
         <div className="content-grid">
-          <Library />
+          <div hidden={ideaView}><Library /></div>
+          <div hidden={!ideaView}><Ideas active={ideaView} targetId={route.startsWith('#ideas/')?route.slice(7):''}/></div>
 
           <section className="service-panel" aria-labelledby="service-title" aria-busy={service.status === 'loading'}>
             <div className="panel-header">

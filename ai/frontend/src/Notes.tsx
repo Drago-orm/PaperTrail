@@ -11,19 +11,19 @@ type Run = { id: string; status: string; error: string | null; elapsed_ms: numbe
   mode: string; stage: string; chars: number | null; pages: number[]; noteId: string | null;
   calls: number | null; usage: Record<string, unknown> | null; role: string;
   rounds: number | null; checks: Round[]; unresolved: number | null; usageComplete: boolean | null;
-  nodes: FlowNode[]; canRetry: boolean; knownCalls: number | null; conditions: { interest: string; resources: string } | null }
+  nodes: FlowNode[]; canRetry: boolean; knownCalls: number | null; ideaId: string | null; conditions: { interest: string; resources: string } | null }
 const fields: Record<string, string> = { motivation: '动机', goal: '目标', method: '方法', dataset: '数据集',
   baseline: '基线', metric: '指标', ablation: '消融', result: '结果', limitation: '局限',
   problem_introduction: '写作：问题引入', contribution_organization: '写作：贡献组织', method_explanation: '写作：方法说明',
   experiment_arrangement: '写作：实验安排', limitation_discussion: '写作：局限讨论' }
-const roles: Record<string, string> = { reading: '精读', writing: '写作分析', verification: '原文核查' }
+const roles: Record<string, string> = { reading: '精读', writing: '写作分析', verification: '原文核查', idea: '待验证 Idea' }
 const kinds: Record<string, string> = { author_statement: '作者陈述', system_analysis: '系统判断' }
 const statuses: Record<string, string> = { unchecked: '仍待核查', supported: '支持', partially_supported: '部分支持', unsupported: '不支持', not_reported: '本次范围未报告' }
 const origins: Record<string, string> = { live: '真实 API', replay: '样例回放（未调用模型）', unknown: '来源未知' }
 const stages: Record<string, string> = { queued: '排队', retrieving: '读取证据', calling_model: '调用模型',
   replaying: '加载固定回放', validating: '校验输出和引用', saved: '已保存新版本', failed: '失败',
   rereading: '重新读取原文', verifying: '逐条核查', revising: '定向返工一次', rereading_revision: '重新读取返工依据', rechecking: '复查问题条目',
-  reading: '精读节点', writing: '写作分析节点', verification: '核查节点（含受控返工）' }
+  reading: '精读节点', writing: '写作分析节点', verification: '核查节点（含受控返工）', idea:'Idea 节点' }
 function item(value: unknown): value is Item {
   return record(value) && ['id','field','content','content_type','verification_status','verification_reason'].every(k => typeof value[k] === 'string')
     && Array.isArray(value.evidence_ids) && value.evidence_ids.every(v => typeof v === 'string')
@@ -82,6 +82,7 @@ function parseRun(value: unknown): Run {
     usageComplete: typeof output.usage_complete === 'boolean' ? output.usage_complete : null, nodes,
     canRetry: scope.role === 'workflow' && scope.resume_count === 0,
     knownCalls: typeof output.known_api_calls === 'number' ? output.known_api_calls : null,
+    ideaId: typeof output.idea_id==='string'?output.idea_id:null,
     conditions: record(scope.conditions) && typeof scope.conditions.interest === 'string' && typeof scope.conditions.resources === 'string'
       ? { interest: scope.conditions.interest, resources: scope.conditions.resources } : null }
 }
@@ -187,13 +188,13 @@ export default function Notes({ documentId, onEvidence }: { documentId: string; 
     <button disabled={busy || !!job && ['pending','running'].includes(job.status)} onClick={() => void start()}>运行精读 / 重新运行</button>
     <div className="filters"><label>用户兴趣<input aria-label="流程兴趣" value={interest} maxLength={1000} onChange={e => setInterest(e.target.value)} /></label>
       <label>资源条件<input aria-label="流程资源" value={resources} maxLength={1000} onChange={e => setResources(e.target.value)} /></label></div>
-    <p>流程使用真实 API，依次精读、写作分析、原文核查；先保存当前修改。失败可沿用原输入恢复一次，成功节点复用；含恢复最多 24 次请求。兴趣与资源仅用于分析条件，不生成 Idea。</p>
-    <button disabled={busy || dirty || mode !== 'live' || !!job && ['pending','running'].includes(job.status)} onClick={() => void workflow()}>运行精读→写作→核查</button>
+    <p>流程使用真实 API，依次精读、写作分析、原文核查、Idea；先保存当前修改。失败可沿用原输入恢复一次，成功节点复用；含恢复最多 26 次请求。兴趣与资源用于说明设想的适用条件。</p>
+    <button disabled={busy || dirty || mode !== 'live' || !!job && ['pending','running'].includes(job.status)} onClick={() => void workflow()}>运行精读→写作→核查→Idea</button>
     <button onClick={() => setRefresh(v => v + 1)}>刷新笔记和任务</button>
     {error && <p role="alert" className="error-message">{error}</p>}
     {job && <div className="run-status" role="status">
-      <p>{job.role === 'workflow' ? '三角色流程（真实 API）' : job.role === 'verification' ? '原文核查（真实 API）' : job.mode === 'replay' ? '样例回放（未调用模型）' : '真实 API 精读'} · {job.status} · {stages[job.stage] ?? job.stage}</p>
-      <p>{job.chars === null ? '尚未读取原文' : `本次读取 ${job.chars} 字符，物理页 ${job.pages.join('、')}`} · 耗时 {job.elapsed_ms === null ? '未完成' : job.elapsed_ms+' ms'}</p>
+      <p>{job.role === 'workflow' ? '论文研读流程（真实 API）' : job.role === 'idea' ? 'Idea 生成（真实 API）' : job.role === 'verification' ? '原文核查（真实 API）' : job.mode === 'replay' ? '样例回放（未调用模型）' : '真实 API 精读'} · {job.status} · {stages[job.stage] ?? job.stage}</p>
+      <p>{job.chars === null ? '尚未读取原文' : job.role === 'idea' ? `来源原文共 ${job.chars} 字符，文件与页码见 Idea 来源` : `本次读取 ${job.chars} 字符，物理页 ${job.pages.join('、')}`} · 耗时 {job.elapsed_ms === null ? '未完成' : job.elapsed_ms+' ms'}</p>
       <p>{job.mode === 'replay' ? '未调用 API，无调用用量' : `任务累计 API 请求次数：${job.calls ?? '未完成或中断期间未知'}；用量：${job.usage ? JSON.stringify(job.usage) : '服务未报告，费用未知'}`}</p>
       {job.calls === null && job.knownCalls !== null && <p>已记录请求 {job.knownCalls} 次，中断时未返回的请求数未知。</p>}
       {job.conditions && <p>本次兴趣：{job.conditions.interest || '未提供'}；资源：{job.conditions.resources || '未提供'}</p>}
@@ -207,6 +208,7 @@ export default function Notes({ documentId, onEvidence }: { documentId: string; 
         {round.items.map(check => <p key={check.item_id}>{fields[versions.flatMap(v => [...v.items, ...v.writing_items]).find(i => i.id === check.item_id)?.field ?? ''] ?? '条目'} · {statuses[check.status] ?? check.status}：{check.reason}</p>)}</details>)}
       {job.error && <p className="error-message">{job.error}</p>}
       {job.noteId && <button onClick={() => selectVersion(job.noteId ?? '')}>打开本次结果</button>}
+      {job.ideaId && <a href={'#ideas/'+job.ideaId}>打开本次 Idea</a>}
     </div>}
     {loading ? <p>正在读取笔记…</p> : versions.length === 0 ? <p>暂无精读笔记。</p> : <>
       <label>笔记版本<select aria-label="笔记版本" value={activeId} onChange={e => selectVersion(e.target.value)}>

@@ -56,7 +56,7 @@ def test_initialization_is_idempotent_and_data_survives_reopen(db_path):
     db.initialize(db_path)
     connection = db.connect(db_path)
     try:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 5
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 6
         assert connection.execute("PRAGMA foreign_keys").fetchone()[0] == 1
         row = connection.execute("SELECT * FROM papers WHERE id=?", (str(paper.id),)).fetchone()
         assert row["title"] == paper.title
@@ -182,12 +182,12 @@ def test_idea_source_rejects_evidence_from_other_document_version(db_path):
     idea_id = uuid4()
     with db.transaction(db_path) as connection:
         connection.execute(
-            "INSERT INTO ideas VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO ideas(id,question,hypothesis,derivation,difference,minimum_experiment,resources,failure_conditions,novelty_checks,status,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             (str(idea_id), "test question", "test hypothesis", "", "", "", "", "", "[]", "draft", "now"),
         )
     with pytest.raises(sqlite3.IntegrityError, match="FOREIGN KEY"):
         with db.transaction(db_path) as connection:
             connection.execute(
-                "INSERT INTO idea_sources VALUES (?,?,?,?,?,?)",
+                "INSERT INTO idea_sources(id,idea_id,paper_id,document_id,evidence_id,note_id) VALUES (?,?,?,?,?,?)",
                 (str(uuid4()), str(idea_id), str(paper.id), str(second.id), str(evidence.id), None),
             )
