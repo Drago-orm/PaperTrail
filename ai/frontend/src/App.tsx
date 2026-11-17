@@ -105,7 +105,7 @@ export default function App() {
                 <path d="M10 13H8v26a5 5 0 0 0 5 5h20M21 17h12M21 23h12M21 29h7" />
               </svg>
               <h3>等待导入文献</h3>
-              <p>本阶段尚未提供文献导入。</p>
+              <p>此页面尚未接入文献列表和上传操作。</p>
               <p className="muted">先确认服务状态，开启你的论文研读空间。</p>
             </div>
           </section>

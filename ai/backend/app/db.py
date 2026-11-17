@@ -102,7 +102,12 @@ SCHEMA_V1 = (
         CHECK((status='applied' AND reverted_at IS NULL) OR (status='reverted' AND reverted_at IS NOT NULL))
     )""",
 )
-MIGRATIONS = (SCHEMA_V1,)
+MIGRATIONS = (SCHEMA_V1, (
+    """CREATE TABLE parse_reports (
+        document_id TEXT NOT NULL PRIMARY KEY REFERENCES documents(id),
+        report_json TEXT NOT NULL CHECK(json_valid(report_json))
+    )""",
+))
 
 
 def connect(path: Path) -> sqlite3.Connection:

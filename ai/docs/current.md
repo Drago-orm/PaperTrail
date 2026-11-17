@@ -1,15 +1,12 @@
-# 当前状态：只保留续做所需信息
+# 当前状态
 
-> 后续阶段完成时覆盖本摘要，不逐步追加。建议控制在 40 行内；完整历史在 progress.md，原始开发证据在 development/，仅遇到相关问题时查阅。
-
-- 最近已提交的功能步骤：00、01、02；下一计划步骤：03（PDF 上传与解析）。是否已在执行，以当前任务及相关工作区改动为准。
-- 最近功能提交：`80e6b88`；本次仅优化执行文档，不推进功能步骤。
-- 已有：React/TypeScript/Vite、FastAPI 健康接口、SQLite 九表和迁移、Pydantic 类型、本地文件存储、启动/检查脚本。
-- 入口：`backend/app/main.py`、`config.py`、`db.py`、`schemas.py`、`services/storage.py`、`frontend/src/App.tsx`。
-- 核心约定：证据绑定文档版本；笔记和人工修订保留快照；文件按服务端 ID 存储，数据位于被忽略的 `data/`。
-- 已提交版本的边界：storage 只保存字节；没有 PDF 格式验证、上传解析、同哈希复用、业务列表或真实模型调用。未提交的新实现需按当前任务核对。
-- 既有环境：Node 24.11.1、npm 11.6.2、Python 3.14.3、uv 0.13.8；以版本文件与锁文件为准，无需重新选型或默认升级。
-- 既有检查记录：步骤 02 的全量构建/后端 59 项测试通过，另验证过进程重启持久化及实际启动。本次文档修改没有重新运行这些应用检查。
-- 已知警告：上游 Starlette/TestClient 的 httpx 弃用警告，已保留；除非阻塞当前任务，不反复研究或过滤。
-- 工作区注意：Git 根目录旧 `plan.md` 的删除、`work/` 是既有改动；另有后端依赖文件在本次文档整理期间变化。只提交当前任务文件，有效入口是 `ai/plan.md`。
-- 下一步首读：[03 步骤卡](steps/03-pdf.md)，再按卡片定位相关代码。
+- 已完成功能步骤：00—03；下一步：04，等待用户指定。
+- 当前已有：健康状态、SQLite 数据与文件存储、PDF 上传/文字证据解析；尚无文献管理 UI、阅读器或真实 AI 调用。
+- 入口：backend/app/main.py、services/pdf_import.py、services/storage.py、db.py、schemas.py。
+- 上传：POST /api/documents（multipart file，可选 paper_id）；读取：GET /api/documents/{UUID}。真实上限20 MiB/200页，同哈希复用原文档。
+- 数据库迁移至v2（parse_reports）；候选、覆盖页、警告和失败原因持久化。数据库 parsed 可带限制，完整覆盖看 report；无文字/旋转/疑似双栏跳过或失败，未执行OCR。
+- 最近检查：全量类型/生产构建及72项后端测试通过；新增升级回归后PDF专项14项通过。真实HTTP冒烟和自制样例渲染核验通过。保留原有上游httpx警告。
+- 依赖：pdfplumber0.11.10、python-multipart0.0.34；其余沿用既有版本和真实锁文件。
+- 当前步骤提交/推送状态以最终Git执行及远端核验为准，不为记录自身哈希另建提交。
+- 既有根plan.md删除及work材料保留，不纳入本步；保留并行文档整理提交729a10e。
+- 开发证据：docs/development/step-03.md；完整历史：docs/progress.md。
