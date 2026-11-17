@@ -3,21 +3,27 @@ import { errorMessage, record, request } from './libraryApi'
 
 type Item = { id: string; field: string; content: string; content_type: string; verification_status: string; verification_reason: string;
   evidence_ids: string[]; quotes: { evidence_id: string; text: string }[] }
-type Note = { id: string; version: number; is_user_edited: boolean; source_mode: string; verification_run_id: string | null; items: Item[] }
+type Note = { id: string; version: number; is_user_edited: boolean; source_mode: string; verification_run_id: string | null; items: Item[]; writing_items: Item[] }
+type FlowNode = { role: string; status: string; cached: boolean; manual: boolean; pages: number[]; chars: number; version: number | null; error: string | null }
 type Check = { item_id: string; status: string; reason: string }
-type Round = { attempt: number; items: Check[] }
+type Round = { attempt: number; phase: string; items: Check[] }
 type Run = { id: string; status: string; error: string | null; elapsed_ms: number | null;
   mode: string; stage: string; chars: number | null; pages: number[]; noteId: string | null;
   calls: number | null; usage: Record<string, unknown> | null; role: string;
-  rounds: number | null; checks: Round[]; unresolved: number | null; usageComplete: boolean | null }
+  rounds: number | null; checks: Round[]; unresolved: number | null; usageComplete: boolean | null;
+  nodes: FlowNode[]; canRetry: boolean; knownCalls: number | null; conditions: { interest: string; resources: string } | null }
 const fields: Record<string, string> = { motivation: '动机', goal: '目标', method: '方法', dataset: '数据集',
-  baseline: '基线', metric: '指标', ablation: '消融', result: '结果', limitation: '局限' }
+  baseline: '基线', metric: '指标', ablation: '消融', result: '结果', limitation: '局限',
+  problem_introduction: '写作：问题引入', contribution_organization: '写作：贡献组织', method_explanation: '写作：方法说明',
+  experiment_arrangement: '写作：实验安排', limitation_discussion: '写作：局限讨论' }
+const roles: Record<string, string> = { reading: '精读', writing: '写作分析', verification: '原文核查' }
 const kinds: Record<string, string> = { author_statement: '作者陈述', system_analysis: '系统判断' }
 const statuses: Record<string, string> = { unchecked: '仍待核查', supported: '支持', partially_supported: '部分支持', unsupported: '不支持', not_reported: '本次范围未报告' }
 const origins: Record<string, string> = { live: '真实 API', replay: '样例回放（未调用模型）', unknown: '来源未知' }
 const stages: Record<string, string> = { queued: '排队', retrieving: '读取证据', calling_model: '调用模型',
   replaying: '加载固定回放', validating: '校验输出和引用', saved: '已保存新版本', failed: '失败',
-  rereading: '重新读取原文', verifying: '逐条核查', revising: '定向返工一次', rereading_revision: '重新读取返工依据', rechecking: '复查问题条目' }
+  rereading: '重新读取原文', verifying: '逐条核查', revising: '定向返工一次', rereading_revision: '重新读取返工依据', rechecking: '复查问题条目',
+  reading: '精读节点', writing: '写作分析节点', verification: '核查节点（含受控返工）' }
 function item(value: unknown): value is Item {
   return record(value) && ['id','field','content','content_type','verification_status','verification_reason'].every(k => typeof value[k] === 'string')
     && Array.isArray(value.evidence_ids) && value.evidence_ids.every(v => typeof v === 'string')
@@ -27,7 +33,7 @@ function note(value: unknown): value is Note {
   return record(value) && typeof value.id === 'string' && typeof value.version === 'number'
     && typeof value.is_user_edited === 'boolean' && typeof value.source_mode === 'string'
     && (value.verification_run_id === null || typeof value.verification_run_id === 'string')
-    && Array.isArray(value.items) && value.items.every(item)
+    && Array.isArray(value.items) && value.items.every(item) && Array.isArray(value.writing_items) && value.writing_items.every(item)
 }
 function parseNotes(value: unknown): Note[] {
   if (!Array.isArray(value) || !value.every(note)) throw new Error('笔记版本数据格式无效')
@@ -41,6 +47,18 @@ function parseRun(value: unknown): Run {
   const scope = value.input_scope, output = record(value.output) ? value.output : {}
   if (typeof scope.mode !== 'string' || typeof scope.stage !== 'string') throw new Error('任务范围格式无效')
   const checks: Round[] = []
+  const nodes: FlowNode[] = []
+  if (output.nodes !== undefined) {
+    if (!record(output.nodes)) throw new Error('流程节点格式无效')
+    for (const [role, node] of Object.entries(output.nodes)) {
+      if (!record(node) || typeof node.status !== 'string' || typeof node.cached !== 'boolean'
+        || typeof node.context_chars !== 'number' || !Array.isArray(node.physical_pages)
+        || !node.physical_pages.every(v => typeof v === 'number')) throw new Error('节点范围或状态格式无效')
+      nodes.push({ role, status: node.status, cached: node.cached, manual: node.manual_preserved === true,
+        pages: node.physical_pages, chars: node.context_chars, version: typeof node.input_note_version === 'number' ? node.input_note_version : null,
+        error: typeof node.error === 'string' ? node.error : null })
+    }
+  }
   if (output.checks !== undefined) {
     if (!Array.isArray(output.checks)) throw new Error('核查记录格式无效')
     for (const round of output.checks) {
@@ -50,7 +68,7 @@ function parseRun(value: unknown): Run {
         if (!record(entry) || typeof entry.item_id !== 'string' || typeof entry.status !== 'string' || typeof entry.reason !== 'string') throw new Error('逐条核查记录格式无效')
         items.push({ item_id: entry.item_id, status: entry.status, reason: entry.reason })
       }
-      checks.push({ attempt: round.attempt, items })
+      checks.push({ attempt: round.attempt, phase: typeof round.phase === 'string' ? round.phase : 'unknown', items })
     }
   }
   return { id: value.id, status: value.status, error: value.error, elapsed_ms: value.elapsed_ms,
@@ -61,7 +79,11 @@ function parseRun(value: unknown): Run {
     role: typeof scope.role === 'string' ? scope.role : 'reading', checks,
     rounds: typeof output.revision_rounds === 'number' ? output.revision_rounds : null,
     unresolved: Array.isArray(output.unresolved_item_ids) ? output.unresolved_item_ids.length : null,
-    usageComplete: typeof output.usage_complete === 'boolean' ? output.usage_complete : null }
+    usageComplete: typeof output.usage_complete === 'boolean' ? output.usage_complete : null, nodes,
+    canRetry: scope.role === 'workflow' && scope.resume_count === 0,
+    knownCalls: typeof output.known_api_calls === 'number' ? output.known_api_calls : null,
+    conditions: record(scope.conditions) && typeof scope.conditions.interest === 'string' && typeof scope.conditions.resources === 'string'
+      ? { interest: scope.conditions.interest, resources: scope.conditions.resources } : null }
 }
 
 export default function Notes({ documentId, onEvidence }: { documentId: string; onEvidence: (id: string) => void }) {
@@ -75,11 +97,14 @@ export default function Notes({ documentId, onEvidence }: { documentId: string; 
   const [section, setSection] = useState('')
   const [query, setQuery] = useState('')
   const [revise, setRevise] = useState(true)
+  const [interest, setInterest] = useState('')
+  const [resources, setResources] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [refresh, setRefresh] = useState(0)
   const active = versions.find(v => v.id === activeId)
+  const entries = active ? [...active.items, ...active.writing_items] : []
   useEffect(() => {
     let alive = true
     setLoading(true); setError('')
@@ -94,7 +119,7 @@ export default function Notes({ documentId, onEvidence }: { documentId: string; 
   }, [documentId, refresh])
   useEffect(() => {
     if (active && editorId.current !== active.id) {
-      setDraft(Object.fromEntries(active.items.map(i => [i.id, i.content]))); setDirty(false); editorId.current = active.id
+      setDraft(Object.fromEntries([...active.items, ...active.writing_items].map(i => [i.id, i.content]))); setDirty(false); editorId.current = active.id
     }
   }, [active])
   useEffect(() => {
@@ -103,7 +128,7 @@ export default function Notes({ documentId, onEvidence }: { documentId: string; 
     const timer = window.setTimeout(() => {
       void request('/api/reading-runs/' + job.id).then(data => {
         const next = parseRun(data)
-        if (alive) { setJob(next); if (['succeeded','failed'].includes(next.status)) setRefresh(v => v + 1) }
+        if (alive) { setJob(next); if (next.noteId !== job.noteId || ['succeeded','failed'].includes(next.status)) setRefresh(v => v + 1) }
       }).catch(e => { if (alive) setError(errorMessage(e)) })
     }, 800)
     return () => { alive = false; window.clearTimeout(timer) }
@@ -121,7 +146,7 @@ export default function Notes({ documentId, onEvidence }: { documentId: string; 
   }
   async function save() {
     if (!active) return
-    const changes = Object.fromEntries(active.items.filter(i => draft[i.id] !== i.content).map(i => [i.id, draft[i.id]]))
+    const changes = Object.fromEntries(entries.filter(i => draft[i.id] !== i.content).map(i => [i.id, draft[i.id]]))
     if (!Object.keys(changes).length) { setDirty(false); return }
     setBusy(true); setError('')
     try {
@@ -141,6 +166,15 @@ export default function Notes({ documentId, onEvidence }: { documentId: string; 
     } catch (e) { setError(errorMessage(e)) }
     finally { setBusy(false) }
   }
+  async function workflow(retry = false) {
+    setBusy(true); setError('')
+    try {
+      const path = retry && job ? `/api/workflow-runs/${job.id}/retry` : `/api/documents/${documentId}/workflow-runs`
+      setJob(parseRun(await request(path, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: retry ? undefined : JSON.stringify({ section, query, interest, resources, revise }) })))
+    } catch (e) { setError(errorMessage(e)) }
+    finally { setBusy(false) }
+  }
   return <section className="reading-notes" aria-label="精读笔记">
     <h2>精读与版本笔记</h2>
     <p>每次最多读取 40 个证据块、16000 字符。未报告仅指本次输入范围；程序引用检查不代表语义核查。</p>
@@ -151,16 +185,26 @@ export default function Notes({ documentId, onEvidence }: { documentId: string; 
     <div className="filters"><label>章节候选筛选<input aria-label="精读章节" value={section} maxLength={200} onChange={e => setSection(e.target.value)} /></label>
       <label>证据文本筛选<input aria-label="精读关键词" value={query} maxLength={200} onChange={e => setQuery(e.target.value)} /></label></div>
     <button disabled={busy || !!job && ['pending','running'].includes(job.status)} onClick={() => void start()}>运行精读 / 重新运行</button>
+    <div className="filters"><label>用户兴趣<input aria-label="流程兴趣" value={interest} maxLength={1000} onChange={e => setInterest(e.target.value)} /></label>
+      <label>资源条件<input aria-label="流程资源" value={resources} maxLength={1000} onChange={e => setResources(e.target.value)} /></label></div>
+    <p>流程使用真实 API，依次精读、写作分析、原文核查；先保存当前修改。失败可沿用原输入恢复一次，成功节点复用；含恢复最多 24 次请求。兴趣与资源仅用于分析条件，不生成 Idea。</p>
+    <button disabled={busy || dirty || mode !== 'live' || !!job && ['pending','running'].includes(job.status)} onClick={() => void workflow()}>运行精读→写作→核查</button>
     <button onClick={() => setRefresh(v => v + 1)}>刷新笔记和任务</button>
     {error && <p role="alert" className="error-message">{error}</p>}
     {job && <div className="run-status" role="status">
-      <p>{job.role === 'verification' ? '原文核查（真实 API）' : job.mode === 'replay' ? '样例回放（未调用模型）' : '真实 API 精读'} · {job.status} · {stages[job.stage] ?? job.stage}</p>
+      <p>{job.role === 'workflow' ? '三角色流程（真实 API）' : job.role === 'verification' ? '原文核查（真实 API）' : job.mode === 'replay' ? '样例回放（未调用模型）' : '真实 API 精读'} · {job.status} · {stages[job.stage] ?? job.stage}</p>
       <p>{job.chars === null ? '尚未读取原文' : `本次读取 ${job.chars} 字符，物理页 ${job.pages.join('、')}`} · 耗时 {job.elapsed_ms === null ? '未完成' : job.elapsed_ms+' ms'}</p>
-      <p>{job.mode === 'replay' ? '未调用 API，无调用用量' : `API 请求次数：${job.calls ?? '尚未完成'}；用量：${job.usage ? JSON.stringify(job.usage) : '服务未报告，费用未知'}`}</p>
+      <p>{job.mode === 'replay' ? '未调用 API，无调用用量' : `任务累计 API 请求次数：${job.calls ?? '未完成或中断期间未知'}；用量：${job.usage ? JSON.stringify(job.usage) : '服务未报告，费用未知'}`}</p>
+      {job.calls === null && job.knownCalls !== null && <p>已记录请求 {job.knownCalls} 次，中断时未返回的请求数未知。</p>}
+      {job.conditions && <p>本次兴趣：{job.conditions.interest || '未提供'}；资源：{job.conditions.resources || '未提供'}</p>}
+      {job.nodes.map(node => <details key={node.role}><summary>{roles[node.role] ?? node.role} · {node.status}{node.cached ? ' · 复用已完成结果，本次未调用模型' : node.manual ? ' · 保留人工内容，未调用模型' : ''}</summary>
+        <p>输入笔记：{node.version === null ? '无' : `v${node.version}`}；原文物理页 {node.pages.join('、')}，{node.chars} 字符。</p>
+        {node.error && <p className="error-message">{node.error}</p>}</details>)}
+      {job.role === 'workflow' && job.status === 'failed' && job.canRetry && <button disabled={busy || dirty} onClick={() => void workflow(true)}>重试失败节点（沿用原输入）</button>}
       {job.usageComplete === false && <p>以上仅含服务已返回的用量；失败／重试用量可能缺失，费用未知。</p>}
-      {job.role === 'verification' && <p>定向返工：{job.rounds ?? 0} / 1 轮；待解决问题：{job.unresolved ?? '尚未完成'}。自动核查不保证准确性。</p>}
-      {job.checks.map(round => <details key={round.attempt}><summary>第 {round.attempt} 次核查记录</summary>
-        {round.items.map(check => <p key={check.item_id}>{fields[versions.flatMap(v => v.items).find(i => i.id === check.item_id)?.field ?? ''] ?? '条目'} · {statuses[check.status] ?? check.status}：{check.reason}</p>)}</details>)}
+      {(job.role === 'verification' || job.role === 'workflow' && job.checks.length > 0) && <p>定向返工：{job.rounds ?? 0} / 1 轮；待解决问题：{job.unresolved ?? '尚未完成'}。自动核查不保证准确性。</p>}
+      {job.checks.map(round => <details key={round.attempt}><summary>{round.phase === 'initial' ? '初查' : round.phase === 'recheck' ? '复查' : '核查'}记录（批次 {round.attempt}）</summary>
+        {round.items.map(check => <p key={check.item_id}>{fields[versions.flatMap(v => [...v.items, ...v.writing_items]).find(i => i.id === check.item_id)?.field ?? ''] ?? '条目'} · {statuses[check.status] ?? check.status}：{check.reason}</p>)}</details>)}
       {job.error && <p className="error-message">{job.error}</p>}
       {job.noteId && <button onClick={() => selectVersion(job.noteId ?? '')}>打开本次结果</button>}
     </div>}
@@ -175,7 +219,7 @@ export default function Notes({ documentId, onEvidence }: { documentId: string; 
         <button disabled={busy || dirty || !!job && ['pending','running'].includes(job.status)} onClick={() => void verify()}>核查此版本（真实 API）</button>
         {dirty && <p>请先保存修改，再核查当前内容。</p>}
       </>}
-      {active?.items.map(entry => <article key={entry.id} className="note-item">
+      {entries.map(entry => <article key={entry.id} className="note-item">
         <h3>{fields[entry.field] ?? entry.field} · {kinds[entry.content_type] ?? entry.content_type}</h3>
         <p>{draft[entry.id] !== undefined && draft[entry.id] !== entry.content ? '未保存的修改：尚未核查'
           : `${statuses[entry.verification_status] ?? entry.verification_status} · ${entry.verification_reason}`}</p>

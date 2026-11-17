@@ -3,7 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 import json
 import time
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from pydantic import ValidationError
 
@@ -59,10 +59,11 @@ def save_manual(settings: Settings, document_id: UUID, base_id: UUID, changes: d
         if row is None or row['id'] != str(base_id):
             raise ValueError('笔记已有新版本，请先查看新版本；未覆盖当前编辑')
         base = note_from_row(row)
-        if not changes or set(changes) - {item.id for item in base.items}:
+        combined = base.items + base.writing_items
+        if not changes or set(changes) - {item.id for item in combined}:
             raise ValueError('修改内容为空或含未知条目ID')
         items = []
-        for item in base.items:
+        for item in combined:
             values = item.model_dump()
             if item.id in changes:
                 text = changes[item.id].strip()
@@ -70,8 +71,10 @@ def save_manual(settings: Settings, document_id: UUID, base_id: UUID, changes: d
                     raise ValueError('人工笔记须为1—10000字')
                 values.update(content=text, verification_status='unchecked', verification_reason='人工修订，待原文核查')
             items.append(AnalysisItem.model_validate(values))
+        reading_ids = {item.id for item in base.items}
         return db.insert_note(conn, Note(paper_id=base.paper_id, document_id=document_id, version=base.version+1,
-                                        parent_note_id=base.id, items=items, writing_items=base.writing_items,
+                                        parent_note_id=base.id, items=[item for item in items if item.id in reading_ids],
+                                        writing_items=[item for item in items if item.id not in reading_ids],
                                         is_user_edited=True, source_mode=base.source_mode,
                                         verification_run_id=base.verification_run_id))
 
@@ -81,14 +84,14 @@ class ReadingWorker:
         self.settings = settings
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='papertrail-reading')
         with db.transaction(settings.db_path) as conn:
-            conn.execute("UPDATE runs SET status='failed',error='服务重启中断，请重新运行' WHERE status IN ('pending','running') AND id IN (SELECT run_id FROM run_steps WHERE role IN ('reading','verification'))")
-            conn.execute("UPDATE run_steps SET status='failed',error='服务重启中断，请重新运行' WHERE role IN ('reading','verification') AND status IN ('pending','running')")
+            conn.execute("UPDATE runs SET status='failed',error='服务重启中断，请重试失败节点或重新运行' WHERE status IN ('pending','running') AND id IN (SELECT run_id FROM run_steps WHERE role IN ('reading','writing','verification'))")
+            conn.execute("UPDATE run_steps SET status='failed',error='服务重启中断，请重试失败节点或重新运行' WHERE role IN ('reading','writing','verification') AND status IN ('pending','running')")
 
     def close(self):
         self.executor.shutdown(wait=True)
 
     def start(self, document_id: UUID, mode: str, section: str, query: str,
-              base_note_id: UUID | None = None, revise: bool = True) -> Run:
+              base_note_id: UUID | None = None, revise: bool = True, conditions: dict | None = None) -> Run:
         if mode == 'live':
             missing, errors = self.settings.model_status()
             if missing or errors:
@@ -102,15 +105,16 @@ class ReadingWorker:
             active = conn.execute("SELECT document_id FROM runs WHERE status IN ('pending','running')").fetchall()
             if len(active) >= 10 or any(row['document_id'] == str(document_id) for row in active):
                 raise ValueError('该文档已有活动任务或队列已满（最多10项）')
-            role = 'verification' if base_note_id else 'reading'
+            role = 'workflow' if conditions is not None else 'verification' if base_note_id else 'reading'
             if base_note_id:
                 row = conn.execute('SELECT * FROM notes WHERE document_id=? ORDER BY version DESC LIMIT 1', (str(document_id),)).fetchone()
                 if row is None or row['id'] != str(base_note_id):
                     raise ValueError('只能核查该文件的最新笔记版本，请先查看新版本')
                 base = note_from_row(row)
-                if not 1 <= len(base.items) <= 9 or sum(len(item.content) for item in base.items) > MAX_CHARS:
-                    raise ValueError('核查限1—9个条目，条目正文总长最多16000字符')
-                if all(item.verification_status == 'supported' for item in base.items):
+                combined = base.items + base.writing_items
+                if not 1 <= len(combined) <= 14 or sum(len(item.content) for item in combined) > MAX_CHARS:
+                    raise ValueError('核查限1—14个条目，条目正文总长最多16000字符')
+                if all(item.verification_status == 'supported' for item in combined):
                     raise ValueError('该版本条目已全部支持，无需重复核查')
                 revise = revise and not base.is_user_edited
             scope = {'mode': mode, 'role': role, 'section': section, 'query': query, 'stage': 'queued',
@@ -121,15 +125,22 @@ class ReadingWorker:
                 scope.update(base_note_id=str(base_note_id), revision_limit=int(revise),
                              revision_prompt_version=verification.REVISION_PROMPT_VERSION,
                              max_api_calls=MAX_CALLS * (3 if revise else 1))
+            if conditions is not None:
+                from app.services.workflow import config_digest
+                latest = conn.execute('SELECT id FROM notes WHERE document_id=? ORDER BY version DESC LIMIT 1', (str(document_id),)).fetchone()
+                scope.update(base_note_id=latest['id'] if latest else None, conditions=conditions,
+                             revision_limit=int(revise), resume_count=0, max_api_calls=24,
+                             config_digest=config_digest(self.settings))
             run = Run(document_id=document_id, model_name=self.settings.model_name if mode == 'live' else 'fixed-replay',
-                      prompt_version=verification.PROMPT_VERSION if base_note_id else reading.PROMPT_VERSION,
+                      prompt_version='workflow-v1' if conditions is not None else verification.PROMPT_VERSION if base_note_id else reading.PROMPT_VERSION,
                       parse_version=document['parse_version'], input_scope=scope)
-            conn.execute('''INSERT INTO runs
-                (id,document_id,status,model_name,prompt_version,parse_version,input_scope,created_at)
-                VALUES (?,?,?,?,?,?,?,?)''', (str(run.id), str(document_id), run.status, run.model_name,
-                run.prompt_version, run.parse_version, json.dumps(scope), run.created_at.isoformat()))
-            conn.execute('INSERT INTO run_steps(id,run_id,role,attempt,status) VALUES (?,?,?,?,?)',
-                         (str(uuid4()), str(run.id), role, 1, 'pending'))
+            db.insert_run(conn, run, 'reading' if conditions is not None else role)
+        self.executor.submit(self.execute, run.id)
+        return run
+
+    def retry_workflow(self, run_id: UUID) -> Run:
+        from app.services.workflow import retry
+        run = retry(self.settings, run_id)
         self.executor.submit(self.execute, run.id)
         return run
 
@@ -144,6 +155,9 @@ class ReadingWorker:
         started = time.monotonic()
         reply = None
         try:
+            if run.input_scope.get('role') == 'workflow':
+                from app.services.workflow import execute_workflow
+                return execute_workflow(self, run)
             if run.input_scope.get('role') == 'verification':
                 from app.services.verification_runs import execute_verification
                 return execute_verification(self, run)

@@ -28,8 +28,39 @@ class VerificationRequest(Schema):
     revise: bool = True
 
 
+class WorkflowRequest(ReadingRequest):
+    mode: Literal['live'] = 'live'
+    interest: str = Field(default='', max_length=1000)
+    resources: str = Field(default='', max_length=1000)
+    revise: bool = True
+
+
 def reading_router(settings: Settings) -> APIRouter:
     router = APIRouter()
+
+    @router.post('/api/documents/{document_id}/workflow-runs', response_model=Run, status_code=202)
+    def workflow(document_id: UUID, request: WorkflowRequest, http_request: Request):
+        try:
+            conditions = {key: getattr(request, key).replace('\r\n', '\n').strip() for key in ('interest', 'resources')}
+            return http_request.app.state.reading_worker.start(document_id, 'live', request.section.strip(), request.query.strip(),
+                                                               revise=request.revise, conditions=conditions)
+        except ModelError as exc:
+            raise HTTPException(503, str(exc)) from exc
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @router.post('/api/workflow-runs/{run_id}/retry', response_model=Run, status_code=202)
+    def retry(run_id: UUID, http_request: Request):
+        try:
+            return http_request.app.state.reading_worker.retry_workflow(run_id)
+        except ModelError as exc:
+            raise HTTPException(503, str(exc)) from exc
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
 
     @router.post('/api/documents/{document_id}/verification-runs', response_model=Run, status_code=202)
     def verify(document_id: UUID, request: VerificationRequest, http_request: Request):
@@ -56,7 +87,7 @@ def reading_router(settings: Settings) -> APIRouter:
     @router.get('/api/documents/{document_id}/reading-runs', response_model=list[Run])
     def runs(document_id: UUID):
         with closing(db.connect(settings.db_path)) as conn:
-            return [run_from_row(row) for row in conn.execute('SELECT * FROM runs WHERE document_id=? ORDER BY created_at DESC LIMIT 20', (str(document_id),))]
+            return [run_from_row(row) for row in conn.execute("SELECT * FROM runs WHERE document_id=? AND json_extract(input_scope,'$.parent_run_id') IS NULL ORDER BY created_at DESC LIMIT 20", (str(document_id),))]
 
     @router.get('/api/reading-runs/{run_id}', response_model=Run)
     def status(run_id: UUID):

@@ -23,11 +23,15 @@ class Verdict(Schema):
 
 
 class Verdicts(Schema):
-    items: list[Verdict] = Field(min_length=1, max_length=9)
+    items: list[Verdict] = Field(min_length=1, max_length=14)
+
+
+class RevisionItem(ReadingItem):
+    field: str = Field(min_length=1, max_length=80)
 
 
 class Revisions(Schema):
-    items: list[ReadingItem] = Field(min_length=1, max_length=9)
+    items: list[RevisionItem] = Field(min_length=1, max_length=14)
 
 
 def request(settings: Settings, items: list[AnalysisItem], evidence: list[EvidenceBlock], *, issues=None):

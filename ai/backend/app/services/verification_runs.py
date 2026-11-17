@@ -35,7 +35,7 @@ def execute_verification(worker: ReadingWorker, run: Run):
         persist()
         return evidence
 
-    def perform(items, evidence, role, attempt, issues=None):
+    def perform(items, evidence, role, attempt, issues=None, phase='initial'):
         phase_started = time.monotonic()
         reply = None
         phase_output = None
@@ -44,7 +44,7 @@ def execute_verification(worker: ReadingWorker, run: Run):
             conn.execute('''INSERT INTO run_steps(id,run_id,role,attempt,status) VALUES (?,?,?,?,?)
                 ON CONFLICT(run_id,role,attempt) DO UPDATE SET status='running' ''',
                          (str(uuid4()), str(run.id), role, attempt, 'running'))
-        worker.stage(run, 'revising' if issues is not None else ('rechecking' if attempt == 2 else 'verifying'))
+        worker.stage(run, 'revising' if issues is not None else ('rechecking' if phase == 'recheck' else 'verifying'))
         try:
             reply = verification.request(settings, items, evidence, issues=issues)
             output['api_calls'] += reply.calls
@@ -60,7 +60,7 @@ def execute_verification(worker: ReadingWorker, run: Run):
             phase_output = {'items': [item.model_dump(mode='json') for item in parsed],
                             'api_calls': reply.calls, 'usage': reply.usage}
             if issues is None:
-                output['checks'].append({'attempt': attempt, 'items': phase_output['items']})
+                output['checks'].append({'attempt': attempt, 'phase': phase, 'items': phase_output['items']})
             persist()
             return parsed
         except Exception as exc:
@@ -84,10 +84,20 @@ def execute_verification(worker: ReadingWorker, run: Run):
         if row is None:
             raise ValueError('核查基版笔记不存在')
         base = note_from_row(row)
-        targets = [item for item in base.items if item.verification_status != 'supported']
+        combined = base.items + base.writing_items
+        targets = [item for item in combined if item.verification_status != 'supported']
         evidence = reread(targets, 'rereading')
-        verdicts = perform(targets, evidence, 'verification', 1)
-        items = verification.apply(base.items, verdicts)
+        check_attempt = 0
+        def check_batches(items, evidence, phase):
+            nonlocal check_attempt
+            results = []
+            batch_size = run.input_scope.get('verification_batch_size', 14)
+            for offset in range(0, len(items), batch_size):
+                check_attempt += 1
+                results.extend(perform(items[offset:offset+batch_size], evidence, 'verification', check_attempt, phase=phase))
+            return results
+        verdicts = check_batches(targets, evidence, 'initial')
+        items = verification.apply(combined, verdicts)
         problems = [item for item in items if item.verification_status != 'supported'
                     and not (item.verification_status == 'not_reported' and item.content == '未报告')]
         if problems and run.input_scope['revision_limit']:
@@ -96,7 +106,7 @@ def execute_verification(worker: ReadingWorker, run: Run):
             issues = [verdict for verdict in verdicts if verdict.item_id in problem_ids]
             revised = perform(problems, evidence, 'reading', 1, issues=issues)
             evidence = reread(revised, 'rereading_revision')
-            rechecked = perform(revised, evidence, 'verification', 2)
+            rechecked = check_batches(revised, evidence, 'recheck')
             replacements = {item.id: item for item in verification.apply(revised, rechecked)}
             items = [replacements.get(item.id, item) for item in items]
         output['unresolved_item_ids'] = [str(item.id) for item in items if item.verification_status != 'supported'
@@ -107,8 +117,10 @@ def execute_verification(worker: ReadingWorker, run: Run):
                                   (str(run.document_id),)).fetchone()
             if latest is None or latest['id'] != str(base.id):
                 raise ValueError('核查期间笔记已有新版本；核查记录已保留，未覆盖人工修改')
+            reading_ids = {item.id for item in base.items}
             note = Note(paper_id=base.paper_id, document_id=base.document_id, version=base.version+1,
-                        parent_note_id=base.id, items=items, writing_items=base.writing_items,
+                        parent_note_id=base.id, items=[item for item in items if item.id in reading_ids],
+                        writing_items=[item for item in items if item.id not in reading_ids],
                         is_user_edited=base.is_user_edited, source_mode=base.source_mode, verification_run_id=run.id)
             db.insert_note(conn, note)
             output['note_id'] = str(note.id)

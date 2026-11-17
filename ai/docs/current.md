@@ -1,14 +1,14 @@
 # 当前状态
 
-- 已实现功能步骤00—06；06本地检查通过，真实模型验收仅第一组4项通过，第二组4项受模型使用资格限制。下一功能步骤07等待用户指定，不自行开始。
-- 已有：上传/文献库/PDF.js、精读、固定回放、原文语义核查与最多一轮定向返工、人工笔记版本；尚无写作分析、Idea、导出及后续流程集成。
-- 06入口：backend/app/agents/verification.py、services/verification_runs.py、services/retrieval.py；prompts/verification-v1.md和revision-v1.md；frontend/src/Notes.tsx。
-- POST documents/{id}/verification-runs 接收base_note_id、revise；沿用reading-runs查询。只核查最新保存版本；已支持条目跳过，人工版只核查不自动改写，并发新版本阻止最终写入。
-- 数据库v5：notes.verification_run_id关联真实核查任务，旧版null；source_mode仍表示初始精读来源，人工版继承。任务阶段/初查/返工/复查及失败均持久化。
-- 范围：单进程/单工作线程；原文40块/16000字符；核查1—9条、正文最多16000字符。初查→最多一次问题项返工→仅复查问题项；每个角色最多2请求，任务最多6请求，单次I/O超时60秒。
-- 语义支持由模型判断，引用存在性由程序检查；不确定/未报告继续显示，均只指本次文字范围。03的双栏/旋转/扫描/图表解析限制未改变，不保证自动核查准确性。
-- 最近检查：check.ps1 -Scope all 的前端严格类型/生产构建、后端编译/100项通过；核查专项13项通过。受控真实浏览器状态/理由/返工上限/疑点/定位/草稿/人工保护/刷新/旧版拒绝通过。
-- 真实API：qwen3.8-27b对自制注入样例第一组4项符合预期，1请求、45660ms、prompt1990/completion1897/total3887 tokens；非真实论文、非通用准确率。第二组及用户改为qwen3.8-flash后仍403 AccessDenied.Unpurchased，用量未知；无依据引文/缺失补造/部分支持/缺失对照尚待补真实验收。
-- 本机.env已忽略且未提交密钥；不得自行替换模型。新配置需要服务账户确有模型使用资格，仅格式齐全不代表可调用。依赖/锁文件未变，不重复安装。
-- 本轮8000被系统拒绝绑定，浏览器QA用临时18006后端和测试代理；产品默认配置未改。测试服务已停止、临时端口已释放；上游httpx弃用、PDF.js包体积警告保留。
-- 原有根plan删除与work材料保留。开发节选docs/development/step-06.md；测试PDF、DB和响应仅在忽略目录。提交/推送以实际Git和远端核验为准。
+- 已实现功能步骤00—07；下一步08等待用户指定，不自行开始。07真实三角色流程恢复成功；06独立注入错误第二组尚未补真实验收。
+- 已有：上传/文献库/PDF.js、精读、写作分析、原文核查及一次返工、人工笔记、可恢复LangGraph三节点流程；尚无Idea与导出。
+- 07入口：backend/app/agents/writing.py、services/workflow.py、services/reading_runs.py、verification_runs.py、api/reading.py；prompts/writing-v1.md；frontend/src/Notes.tsx。
+- POST documents/{id}/workflow-runs 输入section/query/interest/resources/revise；POST workflow-runs/{id}/retry沿用原输入恢复一次。模型配置变更或并发人工新版本需启动新流程；成功节点复用，不覆盖人工内容。
+- SQLite仍v5：笔记含writing_items，缓存与检查点保存于现有run_steps。缓存键含角色、规范化范围/条件、文件哈希/解析版本、原文/证据、Prompt版本/内容、模型配置/凭据摘要、笔记与核查快照。密钥不保存到记录。
+- LangGraph1.2.22及实际传递依赖由uv新增并锁定，前端依赖未改。图按精读→写作→核查执行，单进程/单工作线程，成功节点立即保存快照；跨进程恢复已验证。
+- 原文仍40块/16000字符；写作5项，精读9项；核查总正文最多16000字符。流程核查每批最多7项，最多一轮定向返工；正常最多14次请求，含一次恢复硬预算24次。旧任务沿用自身更低预算。中断期间未知请求不填0，预留预算保留。
+- 检查：初始相关33项通过；最终工作流专项11项通过，check.ps1 -Scope all前端严格类型/生产构建、后端导入编译/111项通过。浏览器受控故障、真实后端重启、缓存恢复、写作引用跳页、人工编辑/重跑/刷新通过，测试端口已释放。
+- 真实API：qwen3.8-flash对CC0自制reader.pdf的4块/60字符运行。首轮精读/写作成功、14项合并核查超时；分批后仅恢复核查成功，精读/写作未重复调用。任务913a6ff4-6d0d-4c88-9065-12c30384b94a累计393534ms、已知8请求、已返回17318 tokens，超时用量不全/费用未知。最终支持2、部分支持2、范围未报告10，非真实论文质量认证。
+- 已知：较大输入仍可能超时，自动核查不保证准确性；03解析限制不变。06独立注入错误第二组曾被403拒绝，本轮未重测该样例，不将07验收替代它。
+- 已知警告：LangSmith对Python asyncio API弃用、PDF.js包体积；保留未过滤。新依赖含httpx2，原TestClient/httpx警告不再出现。QA用临时18007，未改产品默认端口或复测上轮8000系统限制。
+- 本机.env忽略且密钥未提交；原有根plan删除、work材料及用户新增scripts/test-api.py保留。开发节选docs/development/step-07.md；测试DB、原始响应与截图仅在忽略目录。提交/推送以实际Git核验为准。

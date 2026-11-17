@@ -3,8 +3,9 @@ import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
+from uuid import uuid4
 
-from app.schemas import Note, Paper
+from app.schemas import Note, Paper, Run
 
 
 SCHEMA_V1 = (
@@ -174,6 +175,16 @@ def create_paper(db_path: Path, paper: Paper) -> Paper:
 def create_note(db_path: Path, note: Note) -> Note:
     with transaction(db_path) as connection:
         return insert_note(connection, note)
+
+
+def insert_run(connection: sqlite3.Connection, run: Run, role: str) -> Run:
+    connection.execute('''INSERT INTO runs
+        (id,document_id,status,model_name,prompt_version,parse_version,input_scope,created_at)
+        VALUES (?,?,?,?,?,?,?,?)''', (str(run.id), str(run.document_id), run.status, run.model_name,
+        run.prompt_version, run.parse_version, json.dumps(run.input_scope), run.created_at.isoformat()))
+    connection.execute('INSERT INTO run_steps(id,run_id,role,attempt,status) VALUES (?,?,?,?,?)',
+                       (str(uuid4()), str(run.id), role, 1, 'pending'))
+    return run
 
 
 def insert_note(connection: sqlite3.Connection, note: Note) -> Note:
