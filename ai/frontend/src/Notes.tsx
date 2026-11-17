@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { errorMessage, record, request } from './libraryApi'
 import ExportActions from './ExportActions'
 
-type Item = { id: string; field: string; content: string; content_type: string; verification_status: string; verification_reason: string;
+export type Item = { id: string; field: string; content: string; content_type: string; verification_status: string; verification_reason: string;
   evidence_ids: string[]; quotes: { evidence_id: string; text: string }[] }
-type Note = { id: string; version: number; is_user_edited: boolean; source_mode: string; verification_run_id: string | null; items: Item[]; writing_items: Item[] }
+export type Note = { id: string; version: number; is_user_edited: boolean; source_mode: string; verification_run_id: string | null; items: Item[]; writing_items: Item[] }
 type FlowNode = { role: string; status: string; cached: boolean; manual: boolean; pages: number[]; chars: number; version: number | null; error: string | null }
 type Check = { item_id: string; status: string; reason: string }
 type Round = { attempt: number; phase: string; items: Check[] }
@@ -18,14 +18,14 @@ const fields: Record<string, string> = { motivation: '动机', goal: '目标', m
   problem_introduction: '写作：问题引入', contribution_organization: '写作：贡献组织', method_explanation: '写作：方法说明',
   experiment_arrangement: '写作：实验安排', limitation_discussion: '写作：局限讨论' }
 const roles: Record<string, string> = { reading: '精读', writing: '写作分析', verification: '原文核查', idea: '待验证 Idea' }
-const kinds: Record<string, string> = { author_statement: '作者陈述', system_analysis: '系统判断' }
-const statuses: Record<string, string> = { unchecked: '仍待核查', supported: '支持', partially_supported: '部分支持', unsupported: '不支持', not_reported: '本次范围未报告' }
-const origins: Record<string, string> = { live: '真实 API', replay: '样例回放（未调用模型）', unknown: '来源未知' }
+export const kinds: Record<string, string> = { author_statement: '作者陈述', system_analysis: '系统判断' }
+export const statuses: Record<string, string> = { unchecked: '仍待核查', supported: '支持', partially_supported: '部分支持', unsupported: '不支持', not_reported: '本次范围未报告' }
+export const origins: Record<string, string> = { live: '真实 API', replay: '样例回放（未调用模型）', unknown: '来源未知' }
 const stages: Record<string, string> = { queued: '排队', retrieving: '读取证据', calling_model: '调用模型',
   replaying: '加载固定回放', validating: '校验输出和引用', saved: '已保存新版本', failed: '失败',
   rereading: '重新读取原文', verifying: '逐条核查', revising: '定向返工一次', rereading_revision: '重新读取返工依据', rechecking: '复查问题条目',
   reading: '精读节点', writing: '写作分析节点', verification: '核查节点（含受控返工）', idea:'Idea 节点' }
-function item(value: unknown): value is Item {
+export function item(value: unknown): value is Item {
   return record(value) && ['id','field','content','content_type','verification_status','verification_reason'].every(k => typeof value[k] === 'string')
     && Array.isArray(value.evidence_ids) && value.evidence_ids.every(v => typeof v === 'string')
     && Array.isArray(value.quotes) && value.quotes.every(q => record(q) && typeof q.evidence_id === 'string' && typeof q.text === 'string')
@@ -36,7 +36,7 @@ function note(value: unknown): value is Note {
     && (value.verification_run_id === null || typeof value.verification_run_id === 'string')
     && Array.isArray(value.items) && value.items.every(item) && Array.isArray(value.writing_items) && value.writing_items.every(item)
 }
-function parseNotes(value: unknown): Note[] {
+export function parseNotes(value: unknown): Note[] {
   if (!Array.isArray(value) || !value.every(note)) throw new Error('笔记版本数据格式无效')
   return value
 }

@@ -163,3 +163,21 @@ python -m pip install --target .tools uv==0.13.8
 接口：GET `/api/papers/{UUID}/duplicates?include_distinct=false`、GET `/api/paper-comparison?left_id=UUID&right_id=UUID`；PUT `/api/paper-relations` 传 `left_id/right_id/token/kind`（kind为version、related、distinct，null清除）；POST `/api/merges` 传相同配对与token、`fields:{字段:left或right}`；GET `/api/papers/{UUID}/merges`；POST `/api/merges/{UUID}/undo`。不存在404，过期比较／字段或顺序冲突409，结构无效422。
 
 数据库v7增加DOI／年份、原始文献关系表和汇总归属视图，复用既有merge_events，不添加依赖。测试覆盖同文件、题目变体、版本关联、相似题目不同研究、非重复纠正、旧版本迁移、事务失败回滚、合并后新增Idea／附件／人工笔记、冲突与倒序撤销；受控浏览器验收见[步骤10记录](docs/development/step-10.md)。规则会漏报或误报，最终关系与合并由用户判断。
+
+## 多文献比较与复现准备清单
+
+从侧栏“多文献比较”选择2—5篇文献，明确每列的原文件与已保存笔记版本；默认选最新已保存版本，可切换旧版，未保存的笔记编辑须先在文献库保存。无笔记时明确提示并禁止生成；同一文献或已合并组不能重复计作多篇。用户标记为同研究不同版本的条目会另行提示，不作为独立研究或独立重复实验。
+
+矩阵沿用笔记的任务／目标（goal）、方法、数据集、基线、指标、消融和局限。每个纳入的条目必须有属于该文件版本、与保存原文逐字匹配的引文，显示原有作者陈述／系统判断、人工修订、来源模式和核查状态。未报告、不支持、研究设想或无有效引文的内容不填成对比结论，留空并提示；未核查和部分支持的主张继续显著标记，不提升为已确认事实。点击出处复用阅读器，跳原PDF物理页与证据区域；快照保存文件名／版本／SHA256、原文献／文件／笔记／证据ID、原文和坐标，解析覆盖／警告／错误如实保留。
+
+配置线索从现有有界检索范围中识别明确的“标签：值”，不重新解析PDF或调用模型。每篇最多40个证据块、16000字符，被引原文优先；截短的相邻块不自动识别为完整配置。标签支持任务／Task、数据集／Dataset、数据划分／Data split／Dataset split、指标／Metric、评估协议／Evaluation protocol、代码／Code／Source code、数据获取／Data availability／Data access、依赖／Dependencies、环境／Environment、参数／Parameters／Hyperparameters、训练配置／Training configuration／Training config、推理配置／Inference configuration／Inference config、硬件／Hardware。只匹配独立标签行，复杂自然语言或未识别格式不推断。
+
+可在每列补充人工摘录，选择原文段落、填写逐字引文及其中的值；服务器校验证据归属、引文和摘录值，拒绝改写、跨文件证据或补造。每列每字段最多一条，共最多12条；补充不覆盖已识别的其他设置，出现多套值仍提示歧义。人工摘录未生成快照前仅留在当前页面；切换文件／笔记前会确认清空。
+
+可比条件覆盖任务、数据集、划分、指标定义／单位、评估协议及训练／推理配置。只有两侧均有单一明确线索才比较文字；仅归一空白，保留大小写、数值、符号和单位，不把mJ与MJ合并。不同值提示不能强行比较指标；缺失、多套设置或可用性表述冲突时为未知。即使全部摘录文字一致，仍要求人工核对完整协议、单位和未摘录条件，不自动排名或判定研究可比。
+
+复现清单列出代码、数据获取、依赖／环境、参数、训练配置、推理配置、硬件。未识别项的值为null并提示“本次有限范围未识别”，不宣称全文未报告；明确“未提供／不可用”的摘录保留出处、值留空。其他原文或人工摘录只作为待核实线索，不代表资源可访问或实验已就绪，不计算就绪率／成功率，不抓取外链、安装依赖或执行代码。
+
+POST `/api/study-comparisons` 传 `{studies:[{note_id:UUID,annotations:[{field,value,evidence_id,text}]}]}` 生成冻结快照，annotations可省略，字段名为task、dataset、split、metric、protocol、code、data、dependencies、parameters、training、inference、hardware。GET `/api/study-comparisons/{UUID}` 重开；页面链接为 `#compare/{UUID}`。不存在404，证据／重复文献组／快照完整性异常409，结构／数量／无效摘录值422，文件读写错误500。
+
+快照及内容SHA256保存在忽略的 `data/comparisons/{UUID}.json`，写临时文件再原子发布，失败不返回成功。之后的元数据、笔记、合并或输入选择不自动改动旧快照；真实后端重启也可按链接重开。文件持续保留，无自动过期；数据库仍v7，模型角色、依赖及锁文件未变。本步受控自制样例验证出处、差异、缺失和保存行为，不代表真实论文自动分析或复现质量；记录见[步骤11](docs/development/step-11.md)。

@@ -404,3 +404,8 @@ main {
 .comparison-scroll th, .comparison-scroll td { border: 1px solid #ccd8d1; padding: 8px; text-align: left; vertical-align: top; white-space: pre-wrap; }
 .comparison-scroll th:first-child { width: 12%; }
 .comparison-scroll th:last-child { width: 16%; }
+.study-comparison { overflow-wrap: anywhere; }
+.study-editor { border-block: 1px solid #ccd8d1; margin: 16px 0; padding: 12px 0; }
+.study-editor textarea { min-height: 70px; }
+.study-matrix th:first-child { width: 100px; }
+.study-matrix th:last-child { width: auto; }
