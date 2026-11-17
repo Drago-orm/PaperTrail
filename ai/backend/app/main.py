@@ -9,6 +9,7 @@ from app.config import Settings
 from app.api.library import library_router
 from app.api.reading import reading_router
 from app.api.ideas import ideas_router
+from app.api.exports import export_router
 from app.services.reading_runs import ReadingWorker
 from app.db import initialize
 from app.services.pdf_import import ImportRejected, ImportResult, get_result, import_pdf
@@ -42,6 +43,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(library_router(settings))
     application.include_router(reading_router(settings))
     application.include_router(ideas_router(settings))
+    application.include_router(export_router(settings))
 
     @application.post('/api/documents', response_model=ImportResult)
     def upload_document(file: UploadFile, paper_id: UUID | None = Form(default=None)) -> ImportResult:

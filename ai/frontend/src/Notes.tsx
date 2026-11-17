@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { errorMessage, record, request } from './libraryApi'
+import ExportActions from './ExportActions'
 
 type Item = { id: string; field: string; content: string; content_type: string; verification_status: string; verification_reason: string;
   evidence_ids: string[]; quotes: { evidence_id: string; text: string }[] }
@@ -214,6 +215,7 @@ export default function Notes({ documentId, onEvidence }: { documentId: string; 
       <label>笔记版本<select aria-label="笔记版本" value={activeId} onChange={e => selectVersion(e.target.value)}>
         {versions.map(v => <option key={v.id} value={v.id}>v{v.version} {v.is_user_edited ? '人工修订' : '分析快照'} · {origins[v.source_mode] ?? '来源未知'}</option>)}</select></label>
       {active && <>
+        <ExportActions key={active.id} noteId={active.id} disabled={dirty} />
         <p className={active.source_mode === 'replay' ? 'configuration-warning' : ''}>初始精读来源：{origins[active.source_mode] ?? '来源未知'}{active.is_user_edited ? '，含人工修订' : ''}</p>
         {active.verification_run_id && <p>此版本含真实 API 核查记录；自动判断须由用户确认。</p>}
         <label><input aria-label="允许定向返工" type="checkbox" checked={revise && !active.is_user_edited} disabled={active.is_user_edited} onChange={e => setRevise(e.target.checked)} />问题条目最多定向返工一次</label>

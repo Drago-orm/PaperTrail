@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import Reader from './Reader'
+import ExportActions from './ExportActions'
 import { errorMessage, record, request, result, type Evidence } from './libraryApi'
 import { idea, ideas, sources, sourceKey, type Idea, type Source } from './ideasApi'
 
@@ -27,6 +28,7 @@ export default function Ideas({ targetId, active }: { targetId: string; active: 
   const [selected,setSelected] = useState<Idea|null>(null), [versions,setVersions] = useState<Idea[]>([])
   const [form,setForm] = useState<Form>(blank), [checked,setChecked] = useState<string[]>([])
   const [pinned,setPinned] = useState<Source[]>([])
+  const [exportIds,setExportIds] = useState<string[]>([])
   const [status,setStatus] = useState('draft'), [q,setQ] = useState(''), [filter,setFilter] = useState('')
   const [interest,setInterest] = useState(''), [resources,setResources] = useState('')
   const [error,setError] = useState(''), [notice,setNotice] = useState(''), [busy,setBusy] = useState(false)
@@ -124,7 +126,13 @@ export default function Ideas({ targetId, active }: { targetId: string; active: 
       <label>状态筛选<select aria-label="Idea状态筛选" value={filter} onChange={e=>setFilter(e.target.value)}><option value="">全部</option>{Object.entries(states).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></label></div>
     <button onClick={()=>setRefresh(v=>v+1)}>刷新 Idea 与来源</button>
     <button disabled={busy} onClick={()=>{if(!dirty || window.confirm('放弃当前未保存编辑？')){setSelected(null);setVersions([]);setForm(blank());setDirty(false);setStatus('draft');setNotice('正在新增人工Idea，请填写验证计划和来源。')}}}>新增人工 Idea</button>
-    {loading?<p>正在读取 Idea…</p>:list.length===0?<p>暂无符合条件的 Idea。</p>:<ul className="paper-list">{list.map(value=><li key={value.id}><button disabled={busy} onClick={()=>void open(value.id)}>{value.question}</button><span>v{value.version} · {states[value.status]} · {versionLabel(value)}</span></li>)}</ul>}
+    <p>勾选需导出的已保存 Idea 版本（最多10个）；筛选或新修订后，已勾选的版本仍保留。导出不生成新内容。</p>
+    {loading?<p>正在读取 Idea…</p>:list.length===0?<p>暂无符合条件的 Idea。</p>:<ul className="paper-list">{list.map(value=><li key={value.id}>
+      <label><input type="checkbox" aria-label={'导出 Idea '+value.id} checked={exportIds.includes(value.id)}
+        disabled={!exportIds.includes(value.id) && exportIds.length>=10} onChange={e=>setExportIds(ids=>e.target.checked?[...ids,value.id]:ids.filter(id=>id!==value.id))}/>导出 v{value.version}</label>
+      <button disabled={busy} onClick={()=>void open(value.id)}>{value.question}</button><span>v{value.version} · {states[value.status]} · {versionLabel(value)}</span></li>)}</ul>}
+    <ExportActions key={exportIds.join(',')} ideaIds={exportIds} disabled={dirty} />
+    {exportIds.length>0 && <button onClick={()=>setExportIds([])}>清空导出选择（{exportIds.length}）</button>}
     <h3>已支持的来源条目（最多6条／3个文件）</h3>
     {!pool.length && <p>暂无可用来源，请先完成原文核查；部分支持条目不作为生成依据。</p>}
     {pool.map(value=><label className="idea-source" key={sourceKey(value)}><input type="checkbox" aria-label={'来源 '+sourceKey(value)} checked={checked.includes(sourceKey(value))}
@@ -143,6 +151,7 @@ export default function Ideas({ targetId, active }: { targetId: string; active: 
     <h3>{selected?'编辑待验证设想':'新增待验证设想'}</h3>
     {selected && <><p>初始来源：{root?.generation_run_id?'真实 API 生成':root?.is_user_edited?'人工新增':'未记录'}；当前标记：{versionLabel(selected)}。</p>
       <label>Idea版本<select aria-label="Idea版本" value={selected.id} onChange={e=>void open(e.target.value)}>{versions.map(v=><option key={v.id} value={v.id}>v{v.version} · {states[v.status]} · {versionLabel(v)}</option>)}</select></label>
+      <ExportActions key={selected.id} ideaIds={[selected.id]} disabled={dirty} />
       {!selected.experiment && <p className="configuration-warning">旧记录没有结构化对照实验，须补充后保存；原文字计划：{selected.minimum_experiment||'未填写'}</p>}</>}
     <p>以下是拟议实验，尚未执行。两组共用模型、数据集和划分，固定设置仅改变指定因素；该结构检查不等于充分的因果验证。</p>
     {Object.entries(labels).map(([key,label])=><label key={key}>{label}<textarea aria-label={'Idea '+key} disabled={busy} maxLength={key==='novelty_checks'||key==='pending'?4000:1500} value={form[key as keyof Form]}
