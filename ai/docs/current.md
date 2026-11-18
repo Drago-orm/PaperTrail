@@ -1,14 +1,10 @@
 # 当前状态
 
-- 已完成00—11、12A与12B实现；13／后续等待用户指定，不自行开始。12B为本地BibTeX／RIS元数据交换，未操作Zotero或模型。
-- 12B入口：backend/app/services/bibliography.py、api/bibliography.py、tests/test_bibliography.py；frontend/src/Bibliography.tsx与Library。复用Paper、db插入、dedup.signals和现有比较／合并／撤销，无新前端依赖；后端锁定bibtexparser2.1.0／rispy0.10.0，传递pylatexenc。
-- DB v8追加Paper.identifiers JSON，旧库默认{}。支持url／isbn／issn／eprint／accession_number／serial_number多值，加入PAPER_EDITABLE与现有合并撤销；文献信息展示导入值。旧v7含真实元数据迁移及撤销测试通过。
-- POST /api/bibliography/preview为multipart file/format(bib或ris)，只读准备，返回映射／未映射字段、同批／库内候选与token；POST /import同文件格式+confirmation_token，库或文件变动拒绝旧预览。单批单事务，全新元数据条目，失败回滚；不自动合并、不创建附件／证据／笔记。
-- UTF-8／BOM，1—100条／2 MiB。题目／作者顺序／摘要／DOI／年份／标识符保留，缺失不补造；未知字段、原引用键／类型不入库，需保留原文件。BibTeX LaTeX保留字面不执行／解码；未定义字符串／拼接／重复字段明确拒绝。RIS边界、冲突检查，续行合空格，PY／Y1同年，月日仅警告不存。
-- POST /api/bibliography/export传format/paper_ids，返回text/filename/count/warnings；所选／列表最多100条，通用misc／GEN及PaperTrail引用键。SN／AN保留值不猜分类，跨格式分类损失有提示；多值BibTeX单字段、RIS换行和无法无损序列化拒绝。标签／任务／方法／数据集／阅读状态／附件／笔记不交换，关键词仅RIS。结构422、解析边界／过期409、缺失404、读写500；已合并被吸收条目不可单独导出。
-- 12B检查：专项25项通过；scripts/check.ps1 -Scope all前端严格类型／生产构建、后端编译导入和179 passed／17既有LangSmith警告；PDF.js体积提示保留。修复真实发现的TS收窄、测试目录和解析器容错边界；收尾RIS样例ER行尾空格清理后专项25项再通过，应用代码未变，复用其余检查。
-- 12B关键流程：自制CC0中英文／特殊字符／团体作者／缺DOI／重复样例往返；浏览器预览0写入、两格式6条、真实bib／ris下载、标识符合并撤销、损坏文件不写入、无伪附件。0外网／模型POST／UI异常；实际进程重启6条完全一致，截图目视；18013／5183／9224已释放。未验证外部Zotero实际互导，.tools QA忽略。
-- 12A仍为证据ID对齐双语阅读（agents/services/api/translation、Bilingual/Reader），本页连续章节候选、6块／4000字、确认发送、20术语和保护／模型配置缓存；Coco独立外链。复杂公式可能原文保留，不保证完整章或语义质量。真实自制短句qwen3.8-flash两次各1请求，已返回977／819 tokens（共1796，费用未知），缓存／重启0请求；未评测长文／中译英。
-- 11的2—5篇指定笔记版本比较快照、10可撤销元数据合并、09同源MD／DOCX导出与既有四角色流程保留。来源仍绑定原ID／文件版本，不补缺失证据、不排名或承诺复现／Idea新颖性。
-- 06独立第二组未补；08新四角色精读2次超时122136ms、用量未知；独立Idea基于07自制样例支持快照成功（114417ms、2请求、已返回5729 tokens但不全），不是完整流程／真实论文质量通过。12A短句与12B元数据测试不弥补这些限制。
-- .env／密钥／PDF／DB／响应及QA不入Git；保留用户根plan删除、work、scripts/test-api.py。本轮真实节选docs/development/step-12b.md；仅提交本步，提交／推送以实际远端核验为准。
+- 已完成步骤 00—13 的本地交付。核心为版本化文献库、证据 PDF 阅读、精读／写作／核查／Idea、人工笔记与版本导出、规则去重与撤销。11 的多文献比较、12A 双语与椰子外链、12B BibTeX／RIS 交换均可用。DB v8，旧库通过事务迁移。
+- 使用与验收入口见 [复现指南](reproduce.md)、[评测记录](evaluation.md)、[演示清单](demo.md) 及 [步骤 13 对话节选](development/step-13.md)。前端与 API 启动可指定不同的本机端口，Vite 代理与健康检查随参数更新。
+- 兼容模型新增可选 PAPERTRAIL_MODEL_ENABLE_THINKING，留空为服务默认。显式值参与缓存，秘密留后端。修订精读提示以明确引文和 ID 一致性，程序原文校验与预算照常。失败／重试用量按已返回部分显示。
+- 两篇 CC BY 原版实际对照。AutoKeras 全范围有版面或引文限制，按搜索空间关键词后真实四角色 66.161 秒，5 请求、26,879 tokens，Idea 第 3 页定位、人工保存和导出通过。Scikit-Multiflow 只提取参考文献页，两版九项未报告。没有观测到核查准确率提升。
+- 第二次空缓存从本地克隆、安装、启动到基于真实来源的人工 Idea 保存／重开／导出共 4 分 49 秒。自动 Idea 两次不合规，恢复复用三节点后人工完成。回放 0 请求，只覆盖固定样例精读、证据、人工笔记与导出。全部真实尝试 31 请求，已返回 121,825 tokens，账单金额未知。
+- 前端严格类型和生产构建、后端编译／导入和 180 项测试、PDF.js 坐标 1 项通过。最终提示更新后受影响 37 项再通过。三组实际 MD／DOCX 内容同源。npm 审计 4 条高风险来自同一开发依赖公告，无同版本范围的已知补丁，保留锁定。
+- 12A 仍限本页连续章节候选、6 块／4000 字、确认发送与对齐缓存，复杂内容可保留原文。12B 保留可映射核心元数据，未映射字段提示。外部 Zotero 实际互导未验收。06 独立第二组与 08 当时的超时保留历史记录，13 新真实四角色成功单列。
+- 比赛视频、技术 PDF、完整会话归档及报名列在演示清单。配置、输入论文、数据库、真实任务结果和 QA 均留在 Git 忽略目录。用户根 plan 删除、work 和 scripts/test-api.py 保留原状态。

@@ -72,6 +72,8 @@ function parseRun(value: unknown): Run {
       checks.push({ attempt: round.attempt, phase: typeof round.phase === 'string' ? round.phase : 'unknown', items })
     }
   }
+  const retriedReading = scope.role === 'reading' && scope.mode === 'live'
+    && typeof output.api_calls === 'number' && output.api_calls > 1
   return { id: value.id, status: value.status, error: value.error, elapsed_ms: value.elapsed_ms,
     mode: scope.mode, stage: scope.stage, chars: typeof scope.context_chars === 'number' ? scope.context_chars : null,
     pages: Array.isArray(scope.physical_pages) && scope.physical_pages.every(v => typeof v === 'number') ? scope.physical_pages : [],
@@ -80,7 +82,7 @@ function parseRun(value: unknown): Run {
     role: typeof scope.role === 'string' ? scope.role : 'reading', checks,
     rounds: typeof output.revision_rounds === 'number' ? output.revision_rounds : null,
     unresolved: Array.isArray(output.unresolved_item_ids) ? output.unresolved_item_ids.length : null,
-    usageComplete: typeof output.usage_complete === 'boolean' ? output.usage_complete : null, nodes,
+    usageComplete: typeof output.usage_complete === 'boolean' ? output.usage_complete : retriedReading ? false : null, nodes,
     canRetry: scope.role === 'workflow' && scope.resume_count === 0,
     knownCalls: typeof output.known_api_calls === 'number' ? output.known_api_calls : null,
     ideaId: typeof output.idea_id==='string'?output.idea_id:null,
@@ -196,7 +198,7 @@ export default function Notes({ documentId, onEvidence }: { documentId: string; 
     {job && <div className="run-status" role="status">
       <p>{job.role === 'workflow' ? '论文研读流程（真实 API）' : job.role === 'idea' ? 'Idea 生成（真实 API）' : job.role === 'verification' ? '原文核查（真实 API）' : job.mode === 'replay' ? '样例回放（未调用模型）' : '真实 API 精读'} · {job.status} · {stages[job.stage] ?? job.stage}</p>
       <p>{job.chars === null ? '尚未读取原文' : job.role === 'idea' ? `来源原文共 ${job.chars} 字符，文件与页码见 Idea 来源` : `本次读取 ${job.chars} 字符，物理页 ${job.pages.join('、')}`} · 耗时 {job.elapsed_ms === null ? '未完成' : job.elapsed_ms+' ms'}</p>
-      <p>{job.mode === 'replay' ? '未调用 API，无调用用量' : `任务累计 API 请求次数：${job.calls ?? '未完成或中断期间未知'}；用量：${job.usage ? JSON.stringify(job.usage) : '服务未报告，费用未知'}`}</p>
+      <p>{job.mode === 'replay' ? '未调用 API，无调用用量' : `任务累计 API 请求次数：${job.calls ?? '未完成或中断期间未知'}；已返回用量：${job.usage ? JSON.stringify(job.usage) : '服务未报告，费用未知'}`}</p>
       {job.calls === null && job.knownCalls !== null && <p>已记录请求 {job.knownCalls} 次，中断时未返回的请求数未知。</p>}
       {job.conditions && <p>本次兴趣：{job.conditions.interest || '未提供'}；资源：{job.conditions.resources || '未提供'}</p>}
       {job.nodes.map(node => <details key={node.role}><summary>{roles[node.role] ?? node.role} · {node.status}{node.cached ? ' · 复用已完成结果，本次未调用模型' : node.manual ? ' · 保留人工内容，未调用模型' : ''}</summary>

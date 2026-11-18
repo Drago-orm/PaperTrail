@@ -248,7 +248,8 @@ def test_cache_key_covers_versions_conditions_prompts_configuration_and_evidence
     scope = done['input_scope']
     key = workflow.cache_key(settings, 'writing', scope, base, evidence)
     assert key == workflow.cache_key(settings, 'writing', dict(reversed(list(scope.items()))), base, evidence)
-    for change in [replace(settings, model_name='other'), replace(settings, model_base_url='https://other.invalid/v1'), replace(settings, model_api_key='other-secret')]:
+    for change in [replace(settings, model_name='other'), replace(settings, model_base_url='https://other.invalid/v1'),
+                   replace(settings, model_api_key='other-secret'), replace(settings, model_enable_thinking='false')]:
         assert key != workflow.cache_key(change, 'writing', scope, base, evidence)
     for changes in [{'sha256': 'a'*64}, {'parse_version': 'changed'}, {'query': 'changed'},
                     {'conditions': {'interest': 'new', 'resources': ''}}, {'conditions': {'interest': '', 'resources': 'CPU'}}, {'revision_limit': 1}]:

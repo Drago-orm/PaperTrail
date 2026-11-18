@@ -37,6 +37,7 @@ def complete(settings: Settings, system: str, user: str) -> Completion:
         'model': settings.model_name,
         'messages': [{'role': 'system', 'content': system}, {'role': 'user', 'content': user}],
         'response_format': {'type': 'json_object'}, 'max_tokens': 4096,
+        **settings.model_options(),
     }).encode()
     request = Request(settings.model_base_url.rstrip('/') + '/chat/completions', data=body,
                       headers={'Authorization': 'Bearer ' + settings.model_api_key, 'Content-Type': 'application/json'})

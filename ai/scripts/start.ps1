@@ -1,12 +1,17 @@
 #Requires -Version 7.0
 [CmdletBinding()]
-param()
+param(
+    [ValidateRange(1024, 65535)][int]$FrontendPort = 5173,
+    [ValidateRange(1024, 65535)][int]$BackendPort = 8000
+)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $processes = @()
 $exitCode = 1
+$frontendUrl = "http://127.0.0.1:$FrontendPort/"
+$backendUrl = "http://127.0.0.1:$BackendPort"
 
 function Assert-PortAvailable {
     param([int]$Port)
@@ -37,8 +42,11 @@ try {
         throw '前端依赖缺失，请先执行 .\scripts\check.ps1 -Scope all -Install。'
     }
 
-    Assert-PortAvailable 8000
-    Assert-PortAvailable 5173
+    if ($BackendPort -eq $FrontendPort) {
+        throw '前后端端口必须不同。'
+    }
+    Assert-PortAvailable $BackendPort
+    Assert-PortAvailable $FrontendPort
     Push-Location -LiteralPath $backendRoot
     try {
         & $uvPath sync --locked
@@ -57,18 +65,25 @@ try {
 
     # Run Python directly so a failed uv wrapper cannot leave its server behind.
     $backend = Start-Process -FilePath $pythonPath -ArgumentList @(
-        '-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', '8000'
+        '-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', $BackendPort
     ) -WorkingDirectory $backendRoot -WindowStyle Hidden -PassThru `
         -RedirectStandardOutput (Join-Path $logDirectory "$runId-backend.out.log") `
         -RedirectStandardError (Join-Path $logDirectory "$runId-backend.err.log")
     $processes += $backend
 
     # Start-Process joins arguments into a command line; quote the single file path.
-    $frontend = Start-Process -FilePath $nodePath -ArgumentList @(
-        ('"{0}"' -f $vitePath), '--host', '127.0.0.1', '--port', '5173', '--strictPort'
-    ) -WorkingDirectory $frontendRoot -WindowStyle Hidden -PassThru `
-        -RedirectStandardOutput (Join-Path $logDirectory "$runId-frontend.out.log") `
-        -RedirectStandardError (Join-Path $logDirectory "$runId-frontend.err.log")
+    $previousApiPort = $env:PAPERTRAIL_API_PORT
+    try {
+        $env:PAPERTRAIL_API_PORT = [string]$BackendPort
+        $frontend = Start-Process -FilePath $nodePath -ArgumentList @(
+            ('"{0}"' -f $vitePath), '--host', '127.0.0.1', '--port', $FrontendPort, '--strictPort'
+        ) -WorkingDirectory $frontendRoot -WindowStyle Hidden -PassThru `
+            -RedirectStandardOutput (Join-Path $logDirectory "$runId-frontend.out.log") `
+            -RedirectStandardError (Join-Path $logDirectory "$runId-frontend.err.log")
+    }
+    finally {
+        $env:PAPERTRAIL_API_PORT = $previousApiPort
+    }
     $processes += $frontend
     Write-Output "启动日志：$logDirectory（$runId）"
 
@@ -83,8 +98,8 @@ try {
             }
         }
         try {
-            $health = Invoke-RestMethod -Uri 'http://127.0.0.1:8000/api/health' -TimeoutSec 1
-            $page = Invoke-WebRequest -Uri 'http://127.0.0.1:5173/' -TimeoutSec 1
+            $health = Invoke-RestMethod -Uri "${frontendUrl}api/health" -TimeoutSec 1
+            $page = Invoke-WebRequest -Uri $frontendUrl -TimeoutSec 1
             if ($health.status -ne 'ok' -or $page.StatusCode -ne 200) {
                 throw '服务响应未满足健康检查。'
             }
@@ -100,7 +115,7 @@ try {
         throw "服务在 30 秒内未就绪：$lastStartupError。请检查启动日志。"
     }
 
-    Write-Output 'PaperTrail 已启动：http://127.0.0.1:5173/（Ctrl+C 停止前后端）'
+    Write-Output "PaperTrail 已启动：$frontendUrl（后端 $backendUrl，Ctrl+C 停止前后端）"
     while ($true) {
         foreach ($process in $processes) {
             if ($process.HasExited) {

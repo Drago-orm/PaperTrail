@@ -178,14 +178,16 @@ def test_retrieval_enforces_actual_boundaries(tmp_path, texts, expected_count, e
     assert retrieve(path, other.id) == []
 
 
-def test_model_transport_limits_auth_redaction_and_usage(monkeypatch):
-    settings = Settings('https://model.invalid/v1', 'controlled', 'never-log-secret')
+@pytest.mark.parametrize('thinking', ['', 'false'])
+def test_model_transport_limits_auth_redaction_and_usage(monkeypatch, thinking):
+    settings = Settings('https://model.invalid/v1', 'controlled', 'never-log-secret', model_enable_thinking=thinking)
     calls = []
     def respond(request, timeout):
         calls.append(timeout)
         assert request.get_header('Authorization') == 'Bearer ' + settings.model_api_key
         payload = json.loads(request.data)
         assert payload['max_tokens'] == 4096
+        assert payload.get('enable_thinking') is (False if thinking else None)
         assert settings.model_api_key not in request.data.decode()
         if len(calls) == 1:
             raise HTTPError(request.full_url, 503, 'provider-secret-body', {}, None)
@@ -204,3 +206,5 @@ def test_model_transport_limits_auth_redaction_and_usage(monkeypatch):
     assert failure.value.calls == 2 and 'sensitive' not in str(failure.value)
     with pytest.raises(model_client.ModelError, match='配置'):
         model_client.complete(replace(settings, model_api_key=''), 'system', 'user')
+    with pytest.raises(model_client.ModelError, match='ENABLE_THINKING'):
+        model_client.complete(replace(settings, model_enable_thinking='invalid'), 'system', 'user')

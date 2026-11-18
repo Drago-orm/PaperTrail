@@ -24,7 +24,8 @@ def digest(value) -> str:
 
 def config_digest(settings: Settings) -> str:
     return digest({'base': settings.model_base_url, 'model': settings.model_name,
-                   'credential': hashlib.sha256(settings.model_api_key.encode()).hexdigest()})
+                   'credential': hashlib.sha256(settings.model_api_key.encode()).hexdigest(),
+                   **settings.model_options()})
 
 
 def cache_key(settings: Settings, role: str, scope: dict, note: Note | None, evidence) -> str:
