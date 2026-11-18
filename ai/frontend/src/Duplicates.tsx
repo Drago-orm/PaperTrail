@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { errorMessage, papers, record, request, type Paper } from './libraryApi'
+import { errorMessage, identifiers, papers, record, request, type Paper } from './libraryApi'
 
 const fields = { title:'题目', abstract:'摘要', authors:'作者', keywords:'关键词', tags:'标签', tasks:'任务',
-  methods:'方法', datasets:'数据集', reading_status:'阅读状态', doi:'DOI', year:'年份' }
+  methods:'方法', datasets:'数据集', reading_status:'阅读状态', doi:'DOI', year:'年份', identifiers:'其他标识符' }
 const relations: Record<string,string> = {version:'同研究不同版本',related:'相关但不同文献',distinct:'非重复'}
 type Candidate = {id:string; title:string; relation:string|null; kind:string; reasons:string[]; differences:string[]}
 type Entry = Paper & {tasks:string[]; methods:string[]; datasets:string[]; members:{id:string; title:string}[]; counts:{notes:number; idea_sources:number}}
@@ -20,7 +20,7 @@ function entry(value:unknown):value is Entry {
     ||!Array.isArray(value.members)||!value.members.every(v=>record(v)&&typeof v.id==='string'&&typeof v.title==='string')
     ||!Array.isArray(value.documents)||!value.documents.every(v=>record(v)&&['id','paper_id','original_name','sha256','parse_status'].every(k=>typeof v[k]==='string')&&typeof v.version==='number'))return false
   return Object.keys(fields).every(key=>['authors','keywords','tags','tasks','methods','datasets'].includes(key)?strings(value[key])
-    :key==='year'?value.year===null||typeof value.year==='number':typeof value[key]==='string')
+    :key==='identifiers'?identifiers(value.identifiers):key==='year'?value.year===null||typeof value.year==='number':typeof value[key]==='string')
 }
 function comparison(value:unknown):Comparison {
   if(!record(value)||!entry(value.left)||!entry(value.right)||typeof value.token!=='string'||typeof value.kind!=='string'
@@ -35,7 +35,7 @@ function history(value:unknown):Event[] {
 }
 function display(value:unknown):string {
   if(value===null||value===undefined||value===''||Array.isArray(value)&&!value.length)return '未提供'
-  return Array.isArray(value)?value.join('；'):String(value)
+  return Array.isArray(value)?value.join('；'):record(value)?Object.entries(value).map(([k,v])=>`${k}: ${display(v)}`).join('；')||'未提供':String(value)
 }
 
 export default function Duplicates({paperId,refresh,disabled,onChanged}:{paperId:string;refresh:number;disabled:boolean;onChanged:()=>Promise<void>}) {

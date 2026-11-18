@@ -1,17 +1,14 @@
 # 当前状态
 
-- 已实现00—11及12A，12B／后续等待用户指定，不自行开始。12A完成Reader内按证据ID对齐的段落／本页连续章节候选翻译、20项术语、发送预览确认、配置缓存及椰子外链。
-- 12A入口：backend/app/agents/translation.py、services/translation.py、api/translation.py、tests/test_translation.py；prompts/translation-v1.md；frontend/src/Bilingual.tsx、Reader.tsx。Comparisons仅一行证据对象复制，支持双语切段后重新定位原出处。无迁移／新依赖／锁变化，DB仍v7。
-- POST /api/translations/preview传document_id/evidence_id、scope(paragraph/section)、target(zh-CN/en)、glossary:[{source,target}]；返回来源范围／配置／confirmation_token，不调用模型。POST /api/translations传相同配置与token，先复核原文配置再执行；无有效确认不发送。首操作展示保护后原文文本／证据ID、目标语言、术语和翻译指令将发给当前配置服务，不发PDF、笔记或其他论文。
-- 单次最多6块／4000字符，章节只是当前物理页内同一章节候选的连续块，不保证完整章；缺章节／超限拒绝不截断。复用共享客户端，60秒网络I/O、最多2请求含一次重试。全局一次翻译，忙时409，PDF读取独立。
-- 公式／代码／引用／URL／数值单位／数字标识符保护；模型必须返回精确ID集合和相同保护标记序列，丢失／改写／重排／错块／新增关键内容拒绝保存。疑似未界定公式代码整块原文保留、纯术语本地替换，明确未调用模型。保护不是完整数学或语义核查，机译需逐段核对，不覆盖原PDF／证据／笔记。
-- 术语最多20项、两侧1—80字、单行原词=译词，精确／英文词边界／长词优先，不得借映射改写数字单位或代码；浏览器本机保存目标／术语，失败提示。配置／段落变化隐藏旧预览和旧成功，异步旧响应不会对齐新段落。
-- data/translations/{SHA256}.json按证据／文件哈希／解析、目标／术语、Prompt／literal-1保护版本、模型配置／凭据摘要缓存，无明文密钥。原子发布／完整性校验，损坏明确失败不自动重计费。段落可供章节复用，真实进程重启可用，命中本次0请求；无自动过期。失败503、缓存I/O500、缺失404、边界／过期409、结构／术语422；内部异常不伪装404，用量缺失／失败费用未知。
-- 椰子仅https://cocotranslate.com/doc外链，新窗口noreferrer；未调用其API、内嵌或上传／同步文件。官方文档网页已核对，不声称其API存在或不存在。
-- 12A最终检查：专项12项通过，all初次153项；后端收尾导入编译／154 passed，最终前端类型／生产构建通过，未变化结果复用。17条LangSmith弃用／PDF.js体积提示保留。初始自制PDF双栏启发式跳页、反引号提取字形／模型块数假设及内部异常误分类已真实记录并修复，未跳解析检查。
-- 真实：已配置qwen3.8-flash，仅自制短句英→中，两次各1请求，4860／5384ms；已返回977／819 tokens（共1796，费用未知），分别随后缓存0请求。自注意力、95.2%、42、[1]保持；不视作真实论文／长章节／中译英质量评测。此前受控模拟单列，不计为真实模型调用。
-- 浏览器受控：预览／确认前0模型、逐段／章节ID对齐、术语／保护、缓存0、范围变化不显示旧成功、失败仍翻页／重试、原文件哈希／高亮、本机术语重开通过；最终缓存实际重启0提供方调用，比较出处重定位原第2页通过。无UI未捕获异常／其他模型任务，截图目视，18012／5182／9223已释放。
-- 11保留2—5篇指定笔记版本的七项矩阵、可比性／复现线索及data/comparisons冻结快照；缺失留空，不排名／不算成功率。10保留规则去重／版本关系、原ID和归属的元数据汇总合并／冲突安全倒序撤销，后续数据保留。09保留同源MD／DOCX冻结导出，未新增翻译导出或全文保版。
-- 既有四角色仍精读／写作／核查／Idea，LangGraph可恢复缓存与人工追加版本；Idea事实限匹配成功核查快照的supported作者陈述／系统判断，6来源／3文件／40块／16000字符。正常四角色最多16请求、含一次恢复26，独立Idea最多2；假设未执行／未外部查新，不保证效果或新颖性。
-- 既有真实限制保留：06独立第二组未补；08新四角色精读2次超时122136ms、用量未知；08独立Idea基于07自制样例真实支持快照成功（114417ms、2请求、已返回5729 tokens但用量不全），不是完整流程或真实论文质量通过。12A短句通过不弥补这些限制。
-- .env、密钥、PDF、DB、响应及QA不入Git；保留用户根plan删除、work、scripts/test-api.py。03解析／自动核查限制有效。本轮真实节选docs/development/step-12a.md；仅提交本步，提交／上传以实际远端核验为准。
+- 已完成00—11、12A与12B实现；13／后续等待用户指定，不自行开始。12B为本地BibTeX／RIS元数据交换，未操作Zotero或模型。
+- 12B入口：backend/app/services/bibliography.py、api/bibliography.py、tests/test_bibliography.py；frontend/src/Bibliography.tsx与Library。复用Paper、db插入、dedup.signals和现有比较／合并／撤销，无新前端依赖；后端锁定bibtexparser2.1.0／rispy0.10.0，传递pylatexenc。
+- DB v8追加Paper.identifiers JSON，旧库默认{}。支持url／isbn／issn／eprint／accession_number／serial_number多值，加入PAPER_EDITABLE与现有合并撤销；文献信息展示导入值。旧v7含真实元数据迁移及撤销测试通过。
+- POST /api/bibliography/preview为multipart file/format(bib或ris)，只读准备，返回映射／未映射字段、同批／库内候选与token；POST /import同文件格式+confirmation_token，库或文件变动拒绝旧预览。单批单事务，全新元数据条目，失败回滚；不自动合并、不创建附件／证据／笔记。
+- UTF-8／BOM，1—100条／2 MiB。题目／作者顺序／摘要／DOI／年份／标识符保留，缺失不补造；未知字段、原引用键／类型不入库，需保留原文件。BibTeX LaTeX保留字面不执行／解码；未定义字符串／拼接／重复字段明确拒绝。RIS边界、冲突检查，续行合空格，PY／Y1同年，月日仅警告不存。
+- POST /api/bibliography/export传format/paper_ids，返回text/filename/count/warnings；所选／列表最多100条，通用misc／GEN及PaperTrail引用键。SN／AN保留值不猜分类，跨格式分类损失有提示；多值BibTeX单字段、RIS换行和无法无损序列化拒绝。标签／任务／方法／数据集／阅读状态／附件／笔记不交换，关键词仅RIS。结构422、解析边界／过期409、缺失404、读写500；已合并被吸收条目不可单独导出。
+- 12B检查：专项25项通过；scripts/check.ps1 -Scope all前端严格类型／生产构建、后端编译导入和179 passed／17既有LangSmith警告；PDF.js体积提示保留。修复真实发现的TS收窄、测试目录和解析器容错边界；收尾RIS样例ER行尾空格清理后专项25项再通过，应用代码未变，复用其余检查。
+- 12B关键流程：自制CC0中英文／特殊字符／团体作者／缺DOI／重复样例往返；浏览器预览0写入、两格式6条、真实bib／ris下载、标识符合并撤销、损坏文件不写入、无伪附件。0外网／模型POST／UI异常；实际进程重启6条完全一致，截图目视；18013／5183／9224已释放。未验证外部Zotero实际互导，.tools QA忽略。
+- 12A仍为证据ID对齐双语阅读（agents/services/api/translation、Bilingual/Reader），本页连续章节候选、6块／4000字、确认发送、20术语和保护／模型配置缓存；Coco独立外链。复杂公式可能原文保留，不保证完整章或语义质量。真实自制短句qwen3.8-flash两次各1请求，已返回977／819 tokens（共1796，费用未知），缓存／重启0请求；未评测长文／中译英。
+- 11的2—5篇指定笔记版本比较快照、10可撤销元数据合并、09同源MD／DOCX导出与既有四角色流程保留。来源仍绑定原ID／文件版本，不补缺失证据、不排名或承诺复现／Idea新颖性。
+- 06独立第二组未补；08新四角色精读2次超时122136ms、用量未知；独立Idea基于07自制样例支持快照成功（114417ms、2请求、已返回5729 tokens但不全），不是完整流程／真实论文质量通过。12A短句与12B元数据测试不弥补这些限制。
+- .env／密钥／PDF／DB／响应及QA不入Git；保留用户根plan删除、work、scripts/test-api.py。本轮真实节选docs/development/step-12b.md；仅提交本步，提交／推送以实际远端核验为准。

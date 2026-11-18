@@ -136,16 +136,19 @@ MIGRATIONS = (SCHEMA_V1, (
     """CREATE VIEW paper_owners AS SELECT p.id AS original_id,
         COALESCE(m.primary_paper_id,p.id) AS library_id FROM papers p LEFT JOIN merge_events m
         ON m.secondary_paper_id=p.id AND m.status='applied'""",
+), (
+    "ALTER TABLE papers ADD COLUMN identifiers TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(identifiers) AND json_type(identifiers)='object')",
 ))
 
 PAPER_ARRAYS = ('authors', 'keywords', 'tags', 'tasks', 'methods', 'datasets')
-PAPER_EDITABLE = ('title', 'abstract', *PAPER_ARRAYS, 'reading_status', 'doi', 'year')
+PAPER_JSON = (*PAPER_ARRAYS, 'identifiers')
+PAPER_EDITABLE = ('title', 'abstract', *PAPER_ARRAYS, 'reading_status', 'doi', 'year', 'identifiers')
 
 
 def paper_values(row):
     values = dict(row)
     values.pop('removed', None)
-    for name in PAPER_ARRAYS:
+    for name in PAPER_JSON:
         values[name] = json.loads(values[name])
     return values
 
@@ -154,7 +157,7 @@ def update_metadata(connection, paper_id: str, values: dict):
     if not values or set(values) - set(PAPER_EDITABLE):
         raise ValueError('元数据字段无效')
     connection.execute('UPDATE papers SET '+','.join(f'{key}=?' for key in values)+' WHERE id=?',
-                       [json.dumps(value, ensure_ascii=False) if key in PAPER_ARRAYS else value for key, value in values.items()]+[paper_id])
+                       [json.dumps(value, ensure_ascii=False) if key in PAPER_JSON else value for key, value in values.items()]+[paper_id])
 
 
 def connect(path: Path) -> sqlite3.Connection:
@@ -195,23 +198,26 @@ def initialize(path: Path) -> None:
 
 
 def create_paper(db_path: Path, paper: Paper) -> Paper:
-    paper = Paper.model_validate(paper.model_dump())
     with transaction(db_path) as connection:
-        connection.execute(
-            """INSERT INTO papers
-               (id,title,abstract,authors,keywords,tags,tasks,methods,datasets,reading_status,created_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
-            (
-                str(paper.id), paper.title, paper.abstract,
-                *(json.dumps(getattr(paper, name), ensure_ascii=False) for name in (
-                    "authors", "keywords", "tags", "tasks", "methods", "datasets"
-                )),
-                paper.reading_status, paper.created_at.isoformat(),
-            ),
-        )
-        # Empty DOI/year use the column defaults; missing publication metadata stays missing.
-        if paper.doi or paper.year is not None:
-            update_metadata(connection, str(paper.id), {'doi': paper.doi, 'year': paper.year})
+        return insert_paper(connection, paper)
+
+
+def insert_paper(connection: sqlite3.Connection, paper: Paper) -> Paper:
+    paper = Paper.model_validate(paper.model_dump())
+    connection.execute(
+        """INSERT INTO papers
+           (id,title,abstract,authors,keywords,tags,tasks,methods,datasets,reading_status,created_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+        (
+            str(paper.id), paper.title, paper.abstract,
+            *(json.dumps(getattr(paper, name), ensure_ascii=False) for name in (
+                "authors", "keywords", "tags", "tasks", "methods", "datasets"
+            )),
+            paper.reading_status, paper.created_at.isoformat(),
+        ),
+    )
+    if paper.doi or paper.year is not None or paper.identifiers:
+        update_metadata(connection, str(paper.id), {'doi': paper.doi, 'year': paper.year, 'identifiers': paper.identifiers})
     return paper
 
 

@@ -199,3 +199,17 @@ API：POST `/api/translations/preview` 传 `document_id/evidence_id`、可选 `s
 [椰子官方文档入口](https://cocotranslate.com/doc)在新页独立打开。本应用不自动上传、同步文件或内嵌其服务，也未接入私有／未经核实的API；若用户在外部页面手动选文件，由该服务处理。此入口与本机配置的模型翻译是两条独立操作。
 
 本步无数据库迁移或新依赖，仍为v7；未改四角色流程与既有导出。真实冒烟仅使用自制短段落，验证英→中术语、数值、引用和零请求缓存，不代表长文／章节或中译英的真实质量评测。检查、真实请求及受控浏览器过程见[步骤12A记录](docs/development/step-12a.md)。
+
+## BibTeX／RIS 元数据交换
+
+文献库展开“文献元数据交换”，选格式与文件，再预览、确认新建全部条目。仅本地处理UTF-8／UTF-8 BOM文本，单次1—100条、最大2 MiB，按实际内容解析，不依赖文件名。预览不写库，显示原字段映射、未入库字段、文献库／同批重复候选和文件SHA256；确认绑定文件、格式及当前文献库状态，变化后须重新预览。所有新条目在一个事务内写入，失败回滚，不自动合并或覆盖既有条目。导入后“打开此条目并人工去重”复用现有比较、版本关联、合并和撤销。
+
+保存题目、作者顺序／完整姓名、摘要、四位年份和DOI；缺失保持空值，不查注册信息。BibTeX作者按解析库的括号规则分组，团体作者中的and不拆开；Unicode字符与LaTeX字面文本保留，不执行／渲染或自动解码命令。简单已定义string可展开；未定义字符串、拼接表达式、大小写归一后重复字段、解析失败块明确拒绝。RIS校验TY／ER和行格式，标量／作者别名冲突拒绝；续行按库规则合为空格，PY／Y1须同年，只存年份并提示日期精度损失。
+
+数据库v8为Paper增加`identifiers`对象：`url/isbn/issn/eprint/accession_number/serial_number`对应多值字符串列表，旧库默认空对象，加入现有元数据比较、合并和撤销；文献信息中显示导入值。BibTeX对应url／isbn／issn／eprint；accessionnumber／serialnumber为本应用扩展字段，外部工具可能忽略。RIS的UR多值保留为url，SN保留未分类serial_number，AN保留accession_number；不猜SN是ISBN还是ISSN、AN属于哪个数据库。BibTeX→RIS时ISBN／ISSN输出SN、eprint输出AN，值保留但再次导入不恢复原分类。每类最多20值，每值最多1000字符。
+
+可导出所选文献或当前筛选列表的已保存值，最多100条，不截断；返回UTF-8内容后触发浏览器下载。导出通用类型`@misc`／`GEN`与稳定PaperTrail ID引用键，**不保留原条目类型／引用键，也不是完整参考文献排版或库备份**。期刊、卷期页、附件路径、其他未知字段在预览中明确列出且不保存；标签、阅读状态、任务／方法／数据集、笔记与附件不交换，关键词目前仅RIS映射。请保留原文件及原库。BibTeX同一标识符字段多个值、RIS字段含换行、括号／转义或首尾空白无法无损表示时明确拒绝，导出会重解析核对核心字段与标识符，不生成伪成功文件。
+
+API：POST `/api/bibliography/preview`，multipart `file`、`format:bib或ris`；POST `/api/bibliography/import`再传`confirmation_token`，成功201；POST `/api/bibliography/export`传`{format,paper_ids:[UUID]}`，返回`text/filename/count/warnings`。解析／边界／过期409，结构422，文献不存在404，文件／数据库读写失败500；已合并的被吸收条目须导出主条目或先撤销。不会获取URL、虚构PDF／全文、调用模型或操作本机Zotero数据库。
+
+解析依赖锁定[bibtexparser 2.1.0](https://pypi.org/project/bibtexparser/2.1.0/)与[rispy 0.10.0](https://pypi.org/project/rispy/0.10.0/)，未新增前端依赖。自制CC0样例在`backend/tests/fixtures/metadata.bib`和`metadata.ris`；标识符只用于测试，未声称注册或实际出版。往返、旧库迁移、失败回滚和浏览器实际下载记录见[步骤12B真实节选](docs/development/step-12b.md)。未进行外部Zotero应用互导验收。

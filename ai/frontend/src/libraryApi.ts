@@ -2,7 +2,7 @@ export type Document = { id: string; paper_id: string; version: number; original
 export type Paper = {
   id: string; title: string; authors: string[]; abstract: string; keywords: string[]; tags: string[];
   reading_status: string; removed: boolean; documents: Document[]
-  doi: string; year: number | null
+  doi: string; year: number | null; identifiers: Record<string,string[]>
 }
 export type Evidence = {
   id: string; physical_page: number; text: string; bbox: number[]; page_width: number; page_height: number
@@ -12,6 +12,9 @@ export type Result = { document: Document; reused: boolean; evidence: Evidence[]
 } }
 export function record(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
+}
+export function identifiers(value:unknown):value is Record<string,string[]> {
+  return record(value)&&Object.values(value).every(v=>Array.isArray(v)&&v.every(item=>typeof item==='string'))
 }
 const strings = (value: unknown): value is string[] => Array.isArray(value) && value.every(v => typeof v === 'string')
 function document(value: unknown): value is Document {
@@ -24,6 +27,7 @@ function paper(value: unknown): value is Paper {
     && typeof value.abstract === 'string' && strings(value.authors) && strings(value.keywords) && strings(value.tags)
     && typeof value.reading_status === 'string' && typeof value.removed === 'boolean'
     && typeof value.doi === 'string' && (value.year === null || typeof value.year === 'number' && Number.isInteger(value.year))
+    && identifiers(value.identifiers)
     && Array.isArray(value.documents) && value.documents.every(document)
 }
 function evidence(value: unknown): value is Evidence {

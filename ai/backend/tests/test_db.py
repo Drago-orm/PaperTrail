@@ -56,7 +56,7 @@ def test_initialization_is_idempotent_and_data_survives_reopen(db_path):
     db.initialize(db_path)
     connection = db.connect(db_path)
     try:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 7
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 8
         assert connection.execute("PRAGMA foreign_keys").fetchone()[0] == 1
         row = connection.execute("SELECT * FROM papers WHERE id=?", (str(paper.id),)).fetchone()
         assert row["title"] == paper.title

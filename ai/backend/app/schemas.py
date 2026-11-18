@@ -24,9 +24,19 @@ class Paper(Schema):
     methods: list[str] = Field(default_factory=list)
     datasets: list[str] = Field(default_factory=list)
     doi: str = Field(default='', max_length=300)
+    identifiers: dict[str, list[str]] = Field(default_factory=dict)
     year: int | None = Field(default=None, strict=True, ge=1000, le=9999)
     reading_status: Literal["unread", "reading", "read"] = "unread"
     created_at: AwareDatetime = Field(default_factory=utc_now)
+
+    @field_validator('identifiers')
+    @classmethod
+    def check_identifiers(cls, value):
+        if set(value) - {'url', 'isbn', 'issn', 'eprint', 'accession_number', 'serial_number'}:
+            raise ValueError('标识符类型不受支持')
+        if any(not items or len(items) > 20 or any(not item.strip() or len(item) > 1000 or '\n' in item or '\r' in item for item in items) for items in value.values()):
+            raise ValueError('标识符须为1—20个非空单行值，每项最多1000字')
+        return value
 
 
 class Document(Schema):

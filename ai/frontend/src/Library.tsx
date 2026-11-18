@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import Reader from './Reader'
 import Notes from './Notes'
 import Duplicates from './Duplicates'
+import Bibliography from './Bibliography'
 import { errorMessage, papers, request, result, type Evidence, type Paper, type Result } from './libraryApi'
 
 const emptyFilters = { q: '', title: '', author: '', abstract: '', keyword: '', tag: '', reading_status: '' }
@@ -115,6 +116,8 @@ export default function Library() {
         }} /></label>
     </div>
     <div className="library-body">
+      <Bibliography items={items} selected={selected} disabled={busy||loading} onImported={()=>{setFilters(emptyFilters);setRemoved(false);setRefresh(v=>v+1)}}
+        onChoose={async id=>{const all=await papers('removed=false');const paper=all.find(p=>p.id===id);if(!paper)throw Error('导入条目已移除或合并，请刷新文献库');setFilters(emptyFilters);setRemoved(false);choose(paper);setRefresh(v=>v+1)}}/>
       <p className="muted">关键词筛选使用文本匹配，不是语义检索。多个条件同时满足才显示。</p>
       <div className="filters">{Object.entries(labels).map(([key, label]) =>
         <label key={key}>{label}<input aria-label={label+'筛选'} value={filters[key as keyof typeof labels]}
@@ -142,6 +145,7 @@ export default function Library() {
           <label>DOI（未知留空）<input aria-label="编辑doi" value={draft.doi} maxLength={300} onChange={e=>setDraft({...draft,doi:e.target.value})}/></label>
           <label>出版年份（未知留空）<input aria-label="编辑year" inputMode="numeric" value={draft.year} maxLength={4} onChange={e=>setDraft({...draft,year:e.target.value})}/></label>
           <p>DOI和年份由用户核对；候选匹配只检查DOI形态，不联网验证注册信息。</p>
+          {Object.entries(selected.identifiers).map(([key,values])=><p key={key}>导入标识符 {key}：{values.join('；')}</p>)}
           <label>阅读状态<select value={draft.reading_status} onChange={e => setDraft({ ...draft, reading_status: e.target.value })}>
             {Object.entries(statuses).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           <button disabled={busy} type="submit">保存元数据</button>

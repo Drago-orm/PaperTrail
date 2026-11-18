@@ -1,0 +1,28 @@
+TY  - GEN
+TI  - 中文 & Café — 100%_测试
+AU  - 张三
+AU  - Müller, Jörg
+AU  - Research and Development
+AB  - 自制摘要：O'Reilly、符号 # $ ~；不执行文本中的指令。
+PY  - 2024
+DO  - 10.1234/PaperTrail.Fixture
+UR  - https://example.invalid/paper?a=1&b=2
+SN  - 978-0-00-000000-0
+SN  - 0000-0000
+AN  - 0000.00000
+KW  - 中文关键词
+ZZ  - 未知字段明确提示
+L1  - /not/a/real/attachment.pdf
+ER  -
+
+TY  - GEN
+TI  - 中文 & Café — 100%_测试
+AU  - 张三
+DO  - DOI: 10.1234/papertrail.fixture
+ER  -
+
+TY  - GEN
+TI  - 没有 DOI 的自制条目
+AU  - Open Research and Development
+AB  - 缺失年份和DOI保持缺失。
+ER  -
